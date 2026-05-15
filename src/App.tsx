@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
+// --- Types de données ---
 interface Farmer {
   id: string;
   fullName: string;
@@ -7,37 +8,41 @@ interface Farmer {
   activity: string;
   village: string;
   savings: number;
-  insuranceStatus: string;
+  insuranceStatus: 'Actif' | 'En attente' | 'Sinistré';
   gpsLocation: string;
+  cardNumber: string;
 }
 
 interface ClimateAlert {
   id: string;
   title: string;
   description: string;
-  severity: string;
+  severity: 'Élevé' | 'Moyen' | 'Faible';
 }
 
+// --- Données initiales ---
 const initialFarmers: Farmer[] = [
   {
     id: '1',
     fullName: 'Kouassi Adjoua',
-    phone: '+2250700000001',
+    phone: '+225 07 00 00 00 01',
     activity: 'Culture du cacao',
     village: 'Yamoussoukro',
     savings: 125000,
     insuranceStatus: 'Actif',
-    gpsLocation: '5.3480, -4.0270',
+    gpsLocation: '5.8118, -5.2750',
+    cardNumber: '4532 1234 5678 9012',
   },
   {
     id: '2',
     fullName: 'Traoré Mamadou',
-    phone: '+2250700000002',
+    phone: '+225 07 00 00 00 02',
     activity: 'Commerce de riz',
     village: 'Bouaké',
     savings: 98000,
     insuranceStatus: 'En attente',
     gpsLocation: '7.6938, -5.0303',
+    cardNumber: '4532 9876 5432 1098',
   },
 ];
 
@@ -45,411 +50,437 @@ const climateAlerts: ClimateAlert[] = [
   {
     id: '1',
     title: 'Alerte Sécheresse',
-    description: 'Faible niveau de pluie détecté pendant 21 jours.',
+    description: 'Faible niveau de pluie détecté sur les 21 derniers jours dans le Gbêkê.',
     severity: 'Élevé',
   },
   {
     id: '2',
-    title: 'Risque d’inondation',
-    description: 'Précipitations importantes prévues cette semaine.',
-    severity: 'Moyen',
+    title: 'Prévision normale',
+    description: 'Pluviométrie adéquate attendue cette semaine dans le Bélier.',
+    severity: 'Faible',
   },
 ];
 
+// --- Composant Principal ---
 export default function App() {
   const [farmers, setFarmers] = useState<Farmer[]>(initialFarmers);
+  const [userRole, setUserRole] = useState<'admin' | 'beneficiary' | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [activity, setActivity] = useState('');
-  const [village, setVillage] = useState('');
-  const [gpsLocation, setGpsLocation] = useState('');
+  // Stats globales (Admin)
+  const totalSavings = useMemo(() => farmers.reduce((acc, item) => acc + item.savings, 0), [farmers]);
 
-  const totalSavings = useMemo(() => {
-    return farmers.reduce((acc, item) => acc + item.savings, 0);
-  }, [farmers]);
+  // Utilisateur connecté (Bénéficiaire)
+  const currentUser = useMemo(() => farmers.find(f => f.id === currentUserId), [farmers, currentUserId]);
 
-  const registerFarmer = () => {
-    if (!fullName || !phone || !activity || !village) {
-      alert('Veuillez remplir tous les champs obligatoires.');
-      return;
-    }
-
-    const newFarmer: Farmer = {
-      id: Date.now().toString(),
-      fullName,
-      phone,
-      activity,
-      village,
-      savings: 0,
-      insuranceStatus: 'Actif',
-      gpsLocation,
-    };
-
-    setFarmers((prev: Farmer[]) => [newFarmer, ...prev]);
-
-    setFullName('');
-    setPhone('');
-    setActivity('');
-    setVillage('');
-    setGpsLocation('');
-
-    alert('Bénéficiaire enregistré avec succès.');
+  // --- Actions ---
+  const handleLoginAdmin = () => setUserRole('admin');
+  
+  const handleLoginBeneficiary = (id: string) => {
+    setCurrentUserId(id);
+    setUserRole('beneficiary');
   };
 
-  const collectContribution = (farmerId: string) => {
-    const updated = farmers.map((farmer: Farmer) => {
-      if (farmer.id === farmerId) {
-        return {
-          ...farmer,
-          savings: farmer.savings + 5000,
+  const handleLogout = () => {
+    setUserRole(null);
+    setCurrentUserId(null);
+  };
+
+  const simulatePayment = (amount: number, type: 'cotisation' | 'assurance') => {
+    if (!currentUser) return;
+    const updated = farmers.map(f => {
+      if (f.id === currentUser.id) {
+        return { 
+          ...f, 
+          savings: type === 'cotisation' ? f.savings + amount : f.savings,
+          // Simulation logic here...
         };
       }
-
-      return farmer;
+      return f;
     });
-
     setFarmers(updated);
-
-    alert('Cotisation de 5 000 FCFA ajoutée.');
+    alert(type === 'cotisation' ? `Paiement de ${amount} FCFA réussi !` : `Demande d'indemnisation envoyée.`);
   };
 
-  const insurancePayment = (name: string) => {
-    alert(`Paiement assurance initié pour ${name}`);
-  };
+  // --- Vues (Écrans) ---
 
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background:
-          'linear-gradient(135deg,#052e16 0%,#0f172a 45%,#14532d 100%)',
-        color: '#F8FAFC',
-        fontFamily: 'Inter, Arial, sans-serif',
-        paddingBottom: 40,
-      }}
-    >
-      <div
-        style={{
-          background:
-            'linear-gradient(90deg,#14532d,#15803d,#22c55e)',
-          padding: 30,
-          borderBottomLeftRadius: 30,
-          borderBottomRightRadius: 30,
-          boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
-        }}
-      >
-        <h1 style={{ fontSize: 42 }}>AGROSUSU</h1>
+  // 1. Écran de Connexion
+  if (!userRole) {
+    return (
+      <div style={styles.loginContainer}>
+        <div style={styles.loginBox}>
+          <h1 style={{ color: '#16a34a', marginBottom: '10px' }}>AgroSusu</h1>
+          <p style={{ color: '#64748b', marginBottom: '30px' }}>Plateforme d'inclusion financière agricole</p>
+          
+          <button style={styles.primaryBtn} onClick={handleLoginAdmin}>
+            🔐 Connexion Administrateur
+          </button>
+          
+          <div style={{ margin: '20px 0', color: '#94a3b8' }}>ou</div>
+          
+          <p style={{ fontSize: '14px', marginBottom: '10px' }}>Simuler la connexion d'un bénéficiaire :</p>
+          {farmers.map(f => (
+            <button key={f.id} style={styles.secondaryBtn} onClick={() => handleLoginBeneficiary(f.id)}>
+              👨🏿‍🌾 Connexion - {f.fullName}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
-        <p style={{ color: '#DCFCE7', fontSize: 18 }}>
-          Fintech Agricole • Assurance Climatique • Épargne Collective
-        </p>
+  // 2. Écran Administrateur
+  if (userRole === 'admin') {
+    return (
+      <div style={styles.appContainer}>
+        <NavBar title="Portail Administrateur" onLogout={handleLogout} />
+        
+        <div style={styles.gridDashboard}>
+          <MetricCard title="Bénéficiaires" value={farmers.length.toString()} icon="👥" />
+          <MetricCard title="Fonds Susu" value={`${totalSavings.toLocaleString()} FCFA`} icon="💰" />
+          <MetricCard title="Assurances Actives" value={farmers.filter(f => f.insuranceStatus === 'Actif').length.toString()} icon="🛡️" />
+        </div>
 
-        <div style={heroGrid}>
-          <div style={heroCard}>
-            <h3>Assurance Climatique</h3>
-            <p>Protection sécheresse et inondation.</p>
+        <div style={styles.section}>
+          <h2>📍 Cartographie Globale des Parcelles</h2>
+          <div style={styles.mapContainer}>
+             <div style={styles.mapOverlay}>
+                {farmers.map(f => (
+                  <div key={f.id} style={styles.mapPin}>
+                    📍 <span style={styles.pinTooltip}>{f.fullName} ({f.village})</span>
+                  </div>
+                ))}
+             </div>
           </div>
+        </div>
 
-          <div style={heroCard}>
-            <h3>GPS Parcelles</h3>
-            <p>Traçabilité des exploitations agricoles.</p>
-          </div>
-
-          <div style={heroCard}>
-            <h3>Mobile Money</h3>
-            <p>Paiements et cotisations numériques.</p>
-          </div>
-
-          <div style={heroCard}>
-            <h3>Crédit Agricole</h3>
-            <p>Financement intelligent des producteurs.</p>
+        <div style={styles.section}>
+          <h2>📋 Gestion des Bénéficiaires</h2>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>Activité</th>
+                  <th>Épargne</th>
+                  <th>Statut Assurance</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {farmers.map(f => (
+                  <tr key={f.id}>
+                    <td>{f.fullName}</td>
+                    <td>{f.activity}</td>
+                    <td>{f.savings.toLocaleString()} FCFA</td>
+                    <td>
+                      <span style={f.insuranceStatus === 'Actif' ? styles.badgeGreen : styles.badgeOrange}>
+                        {f.insuranceStatus}
+                      </span>
+                    </td>
+                    <td>
+                      <button style={styles.actionBtn}>Détails</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
+    );
+  }
 
-      <div style={dashboardGrid}>
-        <div style={dashboardCard}>
-          <h3>Bénéficiaires</h3>
-          <h1>{farmers.length}</h1>
-        </div>
-
-        <div style={dashboardCard}>
-          <h3>Épargne Totale</h3>
-          <h1>{totalSavings.toLocaleString()} FCFA</h1>
-        </div>
-
-        <div style={dashboardCard}>
-          <h3>Assurances Actives</h3>
-          <h1>86</h1>
-        </div>
-
-        <div style={dashboardCard}>
-          <h3>Parcelles GPS</h3>
-          <h1>142</h1>
-        </div>
-      </div>
-
-      <div style={sectionCard}>
-        <h2>Enregistrement Bénéficiaire</h2>
-
-        <input
-          placeholder='Nom complet'
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          style={inputStyle}
-        />
-
-        <input
-          placeholder='Téléphone'
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          style={inputStyle}
-        />
-
-        <input
-          placeholder='Activité agricole ou commerciale'
-          value={activity}
-          onChange={(e) => setActivity(e.target.value)}
-          style={inputStyle}
-        />
-
-        <input
-          placeholder='Village / Région'
-          value={village}
-          onChange={(e) => setVillage(e.target.value)}
-          style={inputStyle}
-        />
-
-        <input
-          placeholder='Coordonnées GPS'
-          value={gpsLocation}
-          onChange={(e) => setGpsLocation(e.target.value)}
-          style={inputStyle}
-        />
-
-        <button style={primaryButton} onClick={registerFarmer}>
-          Créer un compte
-        </button>
-      </div>
-
-      <div style={sectionCard}>
-        <h2>Alertes Climatiques</h2>
-
-        {climateAlerts.map((alert) => (
-          <div key={alert.id} style={alertCard}>
-            <h3>{alert.title}</h3>
-            <p>{alert.description}</p>
-            <strong>Niveau : {alert.severity}</strong>
-          </div>
-        ))}
-      </div>
-
-      <div style={sectionCard}>
-        <h2>Services Intégrés</h2>
-
-        <div style={servicesGrid}>
-          <div style={serviceCard}>
-            <h3>Wallet Mobile Money</h3>
-            <p>Orange Money, MTN Money, Wave et Moov.</p>
-          </div>
-
-          <div style={serviceCard}>
-            <h3>Suivi GPS</h3>
-            <p>Cartographie et traçabilité des parcelles.</p>
-          </div>
-
-          <div style={serviceCard}>
-            <h3>Données Météo</h3>
-            <p>Analyse climatique et alertes intelligentes.</p>
-          </div>
-
-          <div style={serviceCard}>
-            <h3>Vente Carbone</h3>
-            <p>Revenus issus des crédits carbone agricoles.</p>
-          </div>
-
-          <div style={serviceCard}>
-            <h3>Crédits Agricoles</h3>
-            <p>Financement des semences et équipements.</p>
-          </div>
-
-          <div style={serviceCard}>
-            <h3>Intelligence Artificielle</h3>
-            <p>Détection des maladies des cultures.</p>
-          </div>
-        </div>
-      </div>
-
-      <div style={sectionCard}>
-        <h2>Liste des Bénéficiaires</h2>
-
-        <div style={farmerGrid}>
-          {farmers.map((item: Farmer) => (
-            <div key={item.id} style={farmerCard}>
-              <h3>{item.fullName}</h3>
-
-              <p>Téléphone : {item.phone}</p>
-              <p>Activité : {item.activity}</p>
-              <p>Village : {item.village}</p>
-              <p>GPS : {item.gpsLocation}</p>
-              <p>Assurance : {item.insuranceStatus}</p>
-
-              <h4>
-                Épargne : {item.savings.toLocaleString()} FCFA
-              </h4>
-
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button
-                  style={secondaryButton}
-                  onClick={() => collectContribution(item.id)}
-                >
-                  Cotisation
-                </button>
-
-                <button
-                  style={insuranceButton}
-                  onClick={() => insurancePayment(item.fullName)}
-                >
-                  Assurance
-                </button>
+  // 3. Écran Bénéficiaire
+  if (userRole === 'beneficiary' && currentUser) {
+    return (
+      <div style={styles.appContainer}>
+        <NavBar title={`Espace de ${currentUser.fullName}`} onLogout={handleLogout} />
+        
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '20px' }}>
+          
+          {/* Carte Virtuelle */}
+          <div style={styles.virtualCard}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '20px', fontWeight: 'bold' }}>AgroCard</span>
+              <span style={{ fontSize: '24px' }}>💳</span>
+            </div>
+            <div style={{ margin: '20px 0', fontSize: '22px', letterSpacing: '2px' }}>
+              {currentUser.cardNumber}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: '10px', opacity: 0.8 }}>BÉNÉFICIAIRE</div>
+                <div style={{ fontSize: '14px' }}>{currentUser.fullName.toUpperCase()}</div>
               </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '10px', opacity: 0.8 }}>SOLDE ÉPARGNE</div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{currentUser.savings.toLocaleString()} FCFA</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions Rapides */}
+          <div style={styles.actionPanel}>
+            <h3>Opérations Financières</h3>
+            <button style={styles.primaryBtn} onClick={() => simulatePayment(5000, 'cotisation')}>
+              📥 Payer ma cotisation (5 000 FCFA)
+            </button>
+            <button style={{...styles.secondaryBtn, borderColor: '#ef4444', color: '#ef4444'}} onClick={() => simulatePayment(0, 'assurance')}>
+              🚨 Déclarer un sinistre climatique
+            </button>
+            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '10px' }}>
+              Statut Assurance : <strong>{currentUser.insuranceStatus}</strong>
+            </p>
+          </div>
+        </div>
+
+        <div style={styles.section}>
+          <h2>📍 Ma Parcelle ({currentUser.village})</h2>
+          <div style={{...styles.mapContainer, height: '200px'}}>
+             <div style={styles.mapOverlay}>
+                <div style={{...styles.mapPin, transform: 'scale(1.5)'}}>
+                  📍
+                </div>
+             </div>
+          </div>
+          <p style={{ marginTop: '10px', color: '#64748b' }}>Coordonnées GPS : {currentUser.gpsLocation}</p>
+        </div>
+
+        <div style={styles.section}>
+          <h2>🌤️ Alertes Météo Locales</h2>
+          {climateAlerts.map(alert => (
+            <div key={alert.id} style={alert.severity === 'Élevé' ? styles.alertHigh : styles.alertLow}>
+              <strong>{alert.title}</strong>
+              <p style={{ margin: '5px 0 0 0' }}>{alert.description}</p>
             </div>
           ))}
         </div>
       </div>
+    );
+  }
 
-      <div style={footerCard}>
-        <h2>AgroSusu Platform</h2>
-        <p>
-          Inclusion financière agricole • Assurance climatique • Agriculture
-          intelligente • Afrique de l’Ouest
-        </p>
-      </div>
-    </div>
-  );
+  return null;
 }
 
-const dashboardGrid: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
-  gap: 20,
-  padding: 20,
-};
+// --- Sous-composants UI ---
+const NavBar = ({ title, onLogout }: { title: string, onLogout: () => void }) => (
+  <div style={styles.navbar}>
+    <h2 style={{ margin: 0, color: 'white' }}>{title}</h2>
+    <button style={styles.logoutBtn} onClick={onLogout}>Déconnexion</button>
+  </div>
+);
 
-const dashboardCard: React.CSSProperties = {
-  background: 'linear-gradient(145deg,#1e293b,#0f172a)',
-  padding: 22,
-  borderRadius: 22,
-  border: '1px solid rgba(255,255,255,0.08)',
-  boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
-};
+const MetricCard = ({ title, value, icon }: { title: string, value: string, icon: string }) => (
+  <div style={styles.metricCard}>
+    <div style={{ fontSize: '30px' }}>{icon}</div>
+    <div>
+      <div style={{ color: '#64748b', fontSize: '14px', fontWeight: 'bold' }}>{title.toUpperCase()}</div>
+      <div style={{ color: '#0f172a', fontSize: '24px', fontWeight: 'bold' }}>{value}</div>
+    </div>
+  </div>
+);
 
-const heroGrid: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
-  gap: 18,
-  marginTop: 24,
-};
+// --- Styles CSS-in-JS (Modern UX/UI) ---
+const styles: Record<string, React.CSSProperties> = {
+  // Conteneurs
+  loginContainer: {
+    height: '100vh',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    fontFamily: '"Inter", sans-serif',
+  },
+  loginBox: {
+    background: 'white',
+    padding: '40px',
+    borderRadius: '16px',
+    boxShadow: '0 10px 25px rgba(0,0,0,0.05)',
+    textAlign: 'center',
+    width: '100%',
+    maxWidth: '400px',
+  },
+  appContainer: {
+    minHeight: '100vh',
+    backgroundColor: '#f8fafc',
+    fontFamily: '"Inter", sans-serif',
+    paddingBottom: '40px',
+  },
+  section: {
+    background: 'white',
+    margin: '20px',
+    padding: '24px',
+    borderRadius: '16px',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
+  },
+  
+  // Navigation
+  navbar: {
+    background: 'linear-gradient(90deg, #166534, #15803d)',
+    padding: '20px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+  },
+  
+  // Grilles et Cartes
+  gridDashboard: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+    gap: '20px',
+    padding: '20px',
+  },
+  metricCard: {
+    background: 'white',
+    padding: '20px',
+    borderRadius: '12px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '15px',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
+    border: '1px solid #e2e8f0',
+  },
+  virtualCard: {
+    background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+    color: 'white',
+    padding: '25px',
+    borderRadius: '16px',
+    width: '100%',
+    maxWidth: '350px',
+    boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+    margin: '0 20px',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  actionPanel: {
+    background: 'white',
+    padding: '20px',
+    borderRadius: '16px',
+    flex: '1',
+    minWidth: '280px',
+    margin: '0 20px',
+    border: '1px solid #e2e8f0',
+  },
+  
+  // Boutons
+  primaryBtn: {
+    background: '#16a34a',
+    color: 'white',
+    border: 'none',
+    padding: '12px 20px',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    width: '100%',
+    fontWeight: 'bold',
+    marginBottom: '10px',
+    transition: 'background 0.3s',
+  },
+  secondaryBtn: {
+    background: 'transparent',
+    color: '#0f172a',
+    border: '1px solid #cbd5e1',
+    padding: '12px 20px',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    width: '100%',
+    fontWeight: 'bold',
+    marginBottom: '10px',
+  },
+  logoutBtn: {
+    background: 'rgba(255,255,255,0.2)',
+    color: 'white',
+    border: 'none',
+    padding: '8px 16px',
+    borderRadius: '6px',
+    cursor: 'pointer',
+  },
+  actionBtn: {
+    background: '#f1f5f9',
+    border: 'none',
+    padding: '6px 12px',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    color: '#0f172a',
+  },
 
-const heroCard: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.12)',
-  padding: 20,
-  borderRadius: 20,
-  backdropFilter: 'blur(8px)',
-};
+  // Tableau
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    textAlign: 'left',
+  },
+  
+  // Badges & Alertes
+  badgeGreen: {
+    background: '#dcfce7',
+    color: '#166534',
+    padding: '4px 8px',
+    borderRadius: '999px',
+    fontSize: '12px',
+    fontWeight: 'bold',
+  },
+  badgeOrange: {
+    background: '#fef3c7',
+    color: '#b45309',
+    padding: '4px 8px',
+    borderRadius: '999px',
+    fontSize: '12px',
+    fontWeight: 'bold',
+  },
+  alertHigh: {
+    background: '#fee2e2',
+    borderLeft: '4px solid #ef4444',
+    padding: '15px',
+    margin: '10px 0',
+    borderRadius: '4px',
+    color: '#7f1d1d',
+  },
+  alertLow: {
+    background: '#dcfce7',
+    borderLeft: '4px solid #22c55e',
+    padding: '15px',
+    margin: '10px 0',
+    borderRadius: '4px',
+    color: '#14532d',
+  },
 
-const sectionCard: React.CSSProperties = {
-  background: 'rgba(15,23,42,0.92)',
-  margin: 20,
-  padding: 24,
-  borderRadius: 24,
-  border: '1px solid rgba(255,255,255,0.08)',
-  boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: 15,
-  marginBottom: 14,
-  borderRadius: 12,
-  border: '1px solid #334155',
-  backgroundColor: '#1E293B',
-  color: '#FFFFFF',
-  fontSize: 15,
-};
-
-const primaryButton: React.CSSProperties = {
-  background: 'linear-gradient(90deg,#16a34a,#22c55e)',
-  color: '#FFFFFF',
-  padding: 15,
-  borderRadius: 14,
-  border: 'none',
-  cursor: 'pointer',
-  fontWeight: 'bold',
-  width: '100%',
-};
-
-const secondaryButton: React.CSSProperties = {
-  background: '#2563EB',
-  color: '#FFFFFF',
-  padding: 12,
-  borderRadius: 12,
-  border: 'none',
-  cursor: 'pointer',
-  fontWeight: 'bold',
-};
-
-const insuranceButton: React.CSSProperties = {
-  background: '#DC2626',
-  color: '#FFFFFF',
-  padding: 12,
-  borderRadius: 12,
-  border: 'none',
-  cursor: 'pointer',
-  fontWeight: 'bold',
-};
-
-const alertCard: React.CSSProperties = {
-  background: 'linear-gradient(145deg,#7f1d1d,#991b1b)',
-  padding: 18,
-  borderRadius: 18,
-  marginBottom: 14,
-};
-
-const servicesGrid: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit,minmax(250px,1fr))',
-  gap: 18,
-  marginTop: 20,
-};
-
-const serviceCard: React.CSSProperties = {
-  background: 'linear-gradient(145deg,#1d4ed8,#0f172a)',
-  padding: 22,
-  borderRadius: 20,
-  border: '1px solid rgba(255,255,255,0.08)',
-};
-
-const farmerGrid: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))',
-  gap: 18,
-  marginTop: 20,
-};
-
-const farmerCard: React.CSSProperties = {
-  background: 'linear-gradient(145deg,#334155,#1e293b)',
-  padding: 22,
-  borderRadius: 20,
-  border: '1px solid rgba(255,255,255,0.08)',
-};
-
-const footerCard: React.CSSProperties = {
-  margin: 20,
-  padding: 30,
-  textAlign: 'center',
-  borderRadius: 24,
-  background: 'linear-gradient(90deg,#14532d,#166534,#15803d)',
-  boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
+  // Carte GPS (Simulation)
+  mapContainer: {
+    width: '100%',
+    height: '300px',
+    backgroundColor: '#e2e8f0',
+    borderRadius: '12px',
+    position: 'relative',
+    overflow: 'hidden',
+    // Motif simulant une carte topographique simple
+    backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)',
+    backgroundSize: '20px 20px',
+  },
+  mapOverlay: {
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  mapPin: {
+    fontSize: '24px',
+    cursor: 'pointer',
+    position: 'relative',
+    animation: 'bounce 2s infinite',
+  },
+  pinTooltip: {
+    position: 'absolute',
+    top: '-30px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: '#0f172a',
+    color: 'white',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    fontSize: '12px',
+    whiteSpace: 'nowrap',
+  }
 };
