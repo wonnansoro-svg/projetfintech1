@@ -1,154 +1,187 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 
-// --- Types de données ---
-interface Farmer {
+// ============================================================================
+// 🔧 ZONE D'INTÉGRATION DES API (À DÉVELOPPER PLUS TARD)
+// ============================================================================
+
+const apiService = {
+  // 1. FIREBASE (Authentification & Base de données)
+  // npm install firebase
+  // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: "fintech-f4dee.firebaseapp.com",
+  projectId: "fintech-f4dee",
+  storageBucket: "fintech-f4dee.firebasestorage.app",
+  messagingSenderId: "683189698437",
+  appId: "1:683189698437:web:4660db484bd377a1298eec",
+  measurementId: "G-NSF5PPM5KJ"
+};
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
+  loginAdminFirebase: async (email: string, pass: string) => {
+    // TODO: const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+    console.log("Firebase Auth simulé pour:", email);
+  },
+  
+  // 2. MÉTÉO (ex: OpenWeatherMap, Tahmo)
+  getWeatherForParcel: async (lat: number, lng: number) => {
+    // TODO: fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&appid=VOTRE_API_KEY`)
+    console.log(`Météo récupérée pour GPS: ${lat}, ${lng}`);
+  },
+
+  // 3. NDVI (Santé de la parcelle par Satellite, ex: Sentinel Hub, Agromonitoring)
+  getNDVIHealth: async (polygonGeoJSON: any) => {
+    // TODO: fetch API NDVI avec le polygone de la parcelle
+    console.log("Analyse NDVI simulée : La parcelle est en bonne santé (Indice: 0.65)");
+    return "Bonne santé (0.65)";
+  },
+
+  // 4. LEAFLET (Calcul de superficie avec Turf.js)
+  // npm install react-leaflet leaflet @turf/turf
+  calculateArea: (points: any[]) => {
+    // TODO: utiliser turf.area(turf.polygon([points])) pour avoir la superficie exacte
+    return (Math.random() * 5 + 0.5).toFixed(2); // Simulation en Hectares
+  }
+};
+
+// ============================================================================
+// TYPES DE DONNÉES
+// ============================================================================
+
+interface Beneficiary {
   id: string;
+  fintechCode: string; // Lien avec la Fintech
+  category: 'Agriculteur' | 'Commerçante';
   fullName: string;
+  idCardNumber: string; // Carte d'identité / NNI
   phone: string;
-  activity: string;
-  village: string;
+  activity: string; // Ex: Mangue, Cacao, ou Vente d'igname
+  villageOrMarket: string;
+  // Spécifique Agriculteur
+  gpsPolygon?: any[];
+  areaHectares?: string;
+  // Spécifique Commerçante
+  storageCapacity?: string;
+  
   savings: number;
   insuranceStatus: 'Actif' | 'En attente' | 'Sinistré';
-  gpsLocation: string;
   cardNumber: string;
-  // NOUVEAU: Champs manquants ajoutés
   carbonCredits: number;
   loanStatus: 'Éligible' | 'En cours' | 'Non éligible';
   activities: string[];
 }
 
-interface ClimateAlert {
+interface FintechAdmin {
   id: string;
-  title: string;
-  description: string;
-  severity: 'Élevé' | 'Moyen' | 'Faible';
+  structureName: string;
+  adminName: string;
+  email: string;
+  affiliationCode: string; // Ex: FIN-1234
 }
 
-// --- Données initiales enrichies ---
-const initialFarmers: Farmer[] = [
+// --- Données initiales ---
+const initialBeneficiaries: Beneficiary[] = [
   {
-    id: '1',
-    fullName: 'Kouassi Adjoua',
-    phone: '+225 07 00 00 00 01',
-    activity: 'Culture du cacao',
-    village: 'Yamoussoukro',
-    savings: 125000,
-    insuranceStatus: 'Actif',
-    gpsLocation: '5.8118, -5.2750',
-    cardNumber: '4532 1234 5678 9012',
-    carbonCredits: 15000,
-    loanStatus: 'Éligible',
-    activities: ['12/04/2024: Semis terminé (Preuve GPS ✅)', '05/05/2024: Inspection agroforesterie ✅'],
+    id: '1', fintechCode: 'FIN-DEMO', category: 'Agriculteur',
+    fullName: 'Kouassi Adjoua', idCardNumber: 'CI-1990-123456',
+    phone: '+225 07 00 00 00 01', activity: 'Culture de la Mangue',
+    villageOrMarket: 'Korhogo', areaHectares: '2.5',
+    savings: 125000, insuranceStatus: 'Actif', cardNumber: '4532 1234 5678 9012',
+    carbonCredits: 15000, loanStatus: 'Éligible',
+    activities: ['12/04/2024: Semis terminé (Preuve GPS ✅)', '05/05/2024: Analyse NDVI: Excellente santé ✅'],
   },
   {
-    id: '2',
-    fullName: 'Traoré Mamadou',
-    phone: '+225 07 00 00 00 02',
-    activity: 'Commerce de riz',
-    village: 'Bouaké',
-    savings: 98000,
-    insuranceStatus: 'En attente',
-    gpsLocation: '7.6938, -5.0303',
-    cardNumber: '4532 9876 5432 1098',
-    carbonCredits: 0,
-    loanStatus: 'Non éligible',
+    id: '2', fintechCode: 'FIN-DEMO', category: 'Commerçante',
+    fullName: 'Traoré Mamadou', idCardNumber: 'CI-1985-654321',
+    phone: '+225 07 00 00 00 02', activity: 'Commerce de vivrier (Igname/Banane)',
+    villageOrMarket: 'Marché de Bouaké', storageCapacity: '5 Tonnes',
+    savings: 98000, insuranceStatus: 'En attente', cardNumber: '4532 9876 5432 1098',
+    carbonCredits: 0, loanStatus: 'Non éligible',
     activities: ['01/05/2024: Stockage marchandise enregistré ✅'],
   },
 ];
 
-const climateAlerts: ClimateAlert[] = [
-  {
-    id: '1',
-    title: 'Alerte Sécheresse',
-    description: 'Faible niveau de pluie détecté sur les 21 derniers jours dans le Gbêkê.',
-    severity: 'Élevé',
-  },
-  {
-    id: '2',
-    title: 'Prévision normale',
-    description: 'Pluviométrie adéquate attendue cette semaine dans le Bélier.',
-    severity: 'Faible',
-  },
-];
+// ============================================================================
+// COMPOSANT PRINCIPAL APP
+// ============================================================================
 
-// --- Composant Principal ---
 export default function App() {
-  const [farmers, setFarmers] = useState<Farmer[]>(initialFarmers);
-  const [userRole, setUserRole] = useState<'admin' | 'beneficiary' | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>(initialBeneficiaries);
+  const [currentAdmin, setCurrentAdmin] = useState<FintechAdmin | null>(null);
+  const [currentBeneficiaryId, setCurrentBeneficiaryId] = useState<string | null>(null);
+  const [appView, setAppView] = useState<'login' | 'register_admin' | 'admin_dashboard' | 'beneficiary_dashboard'>('login');
 
-  // --- NOUVEAU: Fonction de Synthèse Vocale (Accessibilité) ---
+  // --- États Formulaire Inscription Administrateur ---
+  const [adminForm, setAdminForm] = useState({ structure: '', name: '', email: '', pass: '' });
+
+  // --- États Formulaire Inscription Bénéficiaire ---
+  const [benCategory, setBenCategory] = useState<'Agriculteur' | 'Commerçante'>('Agriculteur');
+  const [gpsMode, setGpsMode] = useState<'marche' | 'point'>('point');
+  const [simulatedArea, setSimulatedArea] = useState<string | null>(null);
+
+  // --- Synthèse Vocale ---
   const speakText = (text: string) => {
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'fr-FR'; // Langue française (en production, on peut utiliser des API vocales locales)
-      utterance.rate = 0.9; // Parle un peu plus lentement pour plus de clarté
+      utterance.lang = 'fr-FR';
       window.speechSynthesis.speak(utterance);
-    } else {
-      alert("Votre navigateur ne supporte pas la lecture vocale.");
     }
   };
 
-  // Stats globales (Admin)
-  const totalSavings = useMemo(() => farmers.reduce((acc, item) => acc + item.savings, 0), [farmers]);
+  const currentUser = useMemo(() => beneficiaries.find(f => f.id === currentBeneficiaryId), [beneficiaries, currentBeneficiaryId]);
 
-  // Utilisateur connecté (Bénéficiaire)
-  const currentUser = useMemo(() => farmers.find(f => f.id === currentUserId), [farmers, currentUserId]);
-
-  // --- Actions ---
-  const handleLoginAdmin = () => setUserRole('admin');
-  
-  const handleLoginBeneficiary = (id: string) => {
-    setCurrentUserId(id);
-    setUserRole('beneficiary');
+  // --- Actions Navigation & Auth ---
+  const handleRegisterAdmin = () => {
+    const newCode = `FIN-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const newAdmin: FintechAdmin = { id: Date.now().toString(), structureName: adminForm.structure, adminName: adminForm.name, email: adminForm.email, affiliationCode: newCode };
+    setCurrentAdmin(newAdmin);
+    setAppView('admin_dashboard');
+    alert(`Compte Fintech créé ! Votre code d'affiliation à donner à vos agents est : ${newCode}`);
   };
 
-  const handleLogout = () => {
-    setUserRole(null);
-    setCurrentUserId(null);
+  const simulateGpsTracking = () => {
+    alert(`Lancement du traçage GPS en mode: ${gpsMode === 'marche' ? 'Marche le long des bordures' : 'Saisie Point par Point'}`);
+    setTimeout(() => {
+      const area = apiService.calculateArea([]);
+      setSimulatedArea(area);
+      alert(`Traçage terminé. Superficie calculée : ${area} Hectares.`);
+    }, 1500);
   };
 
-  const simulatePayment = (amount: number, type: 'cotisation' | 'assurance' | 'carbone') => {
-    if (!currentUser) return;
-    
-    // NOUVEAU: Retour vocal
-    if (type === 'cotisation') speakText(`Vous avez payé ${amount} francs CFA pour votre cotisation Susu.`);
-    if (type === 'assurance') speakText("Votre déclaration de sinistre climatique a été envoyée avec succès.");
-    if (type === 'carbone') speakText(`Félicitations, vous avez reçu ${amount} francs CFA pour la vente de vos crédits carbone.`);
+  // ============================================================================
+  // VUES (ÉCRANS)
+  // ============================================================================
 
-    const updated = farmers.map(f => {
-      if (f.id === currentUser.id) {
-        return { 
-          ...f, 
-          savings: f.savings + amount,
-        };
-      }
-      return f;
-    });
-    setFarmers(updated);
-    if(type !== 'assurance') alert(`Transaction de ${amount} FCFA réussie !`);
-  };
-
-  // --- Vues (Écrans) ---
-
-  // 1. Écran de Connexion
-  if (!userRole) {
+  // 1. ÉCRAN DE CONNEXION INITIAL
+  if (appView === 'login') {
     return (
       <div style={styles.loginContainer}>
         <div style={styles.loginBox}>
-          <h1 style={{ color: '#16a34a', marginBottom: '10px' }}>AgroSusu</h1>
-          <p style={{ color: '#64748b', marginBottom: '30px' }}>Plateforme d'inclusion financière agricole</p>
+          <h1 style={{ color: '#16a34a', marginBottom: '10px' }}>AgroSusu Hub</h1>
+          <p style={{ color: '#64748b', marginBottom: '30px' }}>La plateforme SaaS des Fintechs Agricoles</p>
           
-          <button style={styles.primaryBtn} onClick={handleLoginAdmin}>
-            🔐 Connexion Administrateur
+          <button style={styles.primaryBtn} onClick={() => { setCurrentAdmin({ id: '0', structureName: 'Demo Fintech', adminName: 'Admin', email: 'admin@demo.com', affiliationCode: 'FIN-DEMO' }); setAppView('admin_dashboard'); }}>
+            🔐 Connexion Admin Existant
+          </button>
+          <button style={styles.secondaryBtn} onClick={() => setAppView('register_admin')}>
+            🏢 Créer une nouvelle Fintech (Admin)
           </button>
           
-          <div style={{ margin: '20px 0', color: '#94a3b8' }}>ou</div>
+          <div style={{ margin: '20px 0', color: '#94a3b8' }}>ou espace bénéficiaire</div>
           
-          <p style={{ fontSize: '14px', marginBottom: '10px' }}>Simuler la connexion d'un bénéficiaire :</p>
-          {farmers.map(f => (
-            <button key={f.id} style={styles.secondaryBtn} onClick={() => handleLoginBeneficiary(f.id)}>
-              👨🏿‍🌾 Connexion - {f.fullName}
+          {beneficiaries.map(f => (
+            <button key={f.id} style={styles.secondaryBtn} onClick={() => { setCurrentBeneficiaryId(f.id); setAppView('beneficiary_dashboard'); }}>
+              👨🏿‍🌾 Connecter {f.fullName} ({f.category})
             </button>
           ))}
         </div>
@@ -156,189 +189,139 @@ export default function App() {
     );
   }
 
-  // 2. Écran Administrateur
-  if (userRole === 'admin') {
+  // 2. ÉCRAN CRÉATION FINTECH (ADMIN)
+  if (appView === 'register_admin') {
+    return (
+      <div style={styles.loginContainer}>
+        <div style={styles.loginBox}>
+          <h2 style={{ color: '#0f172a' }}>Inscription Structure</h2>
+          <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Devenez partenaire et gérez vos propres bénéficiaires.</p>
+          
+          <input type="text" placeholder="Nom de la structure (Fintech/Coopérative)" style={{...styles.input, width: '100%', marginBottom: '10px'}} onChange={e => setAdminForm({...adminForm, structure: e.target.value})} />
+          <input type="text" placeholder="Nom de l'Administrateur" style={{...styles.input, width: '100%', marginBottom: '10px'}} onChange={e => setAdminForm({...adminForm, name: e.target.value})} />
+          <input type="email" placeholder="Email pro" style={{...styles.input, width: '100%', marginBottom: '10px'}} onChange={e => setAdminForm({...adminForm, email: e.target.value})} />
+          <input type="password" placeholder="Mot de passe" style={{...styles.input, width: '100%', marginBottom: '20px'}} onChange={e => setAdminForm({...adminForm, pass: e.target.value})} />
+          
+          <button style={styles.primaryBtn} onClick={handleRegisterAdmin}>Générer mon compte & mon Code</button>
+          <button style={{...styles.secondaryBtn, border: 'none'}} onClick={() => setAppView('login')}>Retour</button>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. DASHBOARD ADMINISTRATEUR (MULTI-TENANT)
+  if (appView === 'admin_dashboard' && currentAdmin) {
+    const myBeneficiaries = beneficiaries.filter(b => b.fintechCode === currentAdmin.affiliationCode);
+    
     return (
       <div style={styles.appContainer}>
-        <NavBar title="Portail Administrateur" onLogout={handleLogout} />
+        <NavBar title={`Tableau de bord : ${currentAdmin.structureName}`} onLogout={() => setAppView('login')} />
         
-        <div style={styles.gridDashboard}>
-          <MetricCard title="Bénéficiaires" value={farmers.length.toString()} icon="👥" />
-          <MetricCard title="Fonds Susu" value={`${totalSavings.toLocaleString()} FCFA`} icon="💰" />
-          <MetricCard title="Assurances Actives" value={farmers.filter(f => f.insuranceStatus === 'Actif').length.toString()} icon="🛡️" />
+        <div style={{ padding: '20px', background: '#e0f2fe', margin: '20px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <strong>Votre Code d'Affiliation Fintech : </strong>
+            <span style={{ background: 'white', padding: '5px 10px', borderRadius: '6px', fontSize: '18px', letterSpacing: '2px', fontWeight: 'bold' }}>{currentAdmin.affiliationCode}</span>
+          </div>
+          <p style={{ margin: 0, fontSize: '12px', color: '#0369a1' }}>Donnez ce code à vos agents terrain pour lier les paysans à votre base.</p>
         </div>
 
-        {/* NOUVEAU: Module d'enrôlement */}
+        {/* NOUVEAU FORMULAIRE D'ENRÔLEMENT KYC COMPLET */}
         <div style={styles.section}>
-          <h2>📝 Enrôlement d'un nouveau bénéficiaire</h2>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <input type="text" placeholder="Nom complet" style={styles.input} />
-            <input type="text" placeholder="Activité (ex: Cacao, Maïs)" style={styles.input} />
-            <button style={{...styles.primaryBtn, width: 'auto'}} onClick={() => alert("Simulation: Capture des coordonnées GPS en cours...")}>
-              📍 Capturer GPS Parcelle
-            </button>
-            <button style={{...styles.primaryBtn, width: 'auto', background: '#0f172a'}}>Enregistrer</button>
+          <h2>📝 Enrôlement KYC d'un Bénéficiaire</h2>
+          
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+             <button style={benCategory === 'Agriculteur' ? styles.tabActive : styles.tabInactive} onClick={() => setBenCategory('Agriculteur')}>🌱 Agriculteur</button>
+             <button style={benCategory === 'Commerçante' ? styles.tabActive : styles.tabInactive} onClick={() => setBenCategory('Commerçante')}>🛒 Commerçante / Vivrier</button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+            <input type="text" placeholder="Nom complet (selon pièce d'identité)" style={styles.input} />
+            <input type="text" placeholder="Numéro Pièce Identité (NNI / CNI)" style={styles.input} />
+            <input type="tel" placeholder="Numéro de Téléphone (Mobile Money)" style={styles.input} />
+            <input type="text" placeholder={benCategory === 'Agriculteur' ? "Village / Localité" : "Marché de vente principal"} style={styles.input} />
+            
+            {benCategory === 'Agriculteur' ? (
+              <>
+                <input type="text" placeholder="Spéculation (Mangue, Cacao, Maïs...)" style={styles.input} />
+                <div style={{ gridColumn: 'span 2', background: '#f8fafc', padding: '15px', border: '1px dashed #cbd5e1', borderRadius: '8px' }}>
+                  <h4>📍 Cartographie de la Parcelle (Intégration Leaflet future)</h4>
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                    <button style={gpsMode === 'point' ? styles.primaryBtn : styles.secondaryBtn} onClick={() => setGpsMode('point')}>📍 Mode Point par Point</button>
+                    <button style={gpsMode === 'marche' ? styles.primaryBtn : styles.secondaryBtn} onClick={() => setGpsMode('marche')}>🚶‍♂️ Mode Marche (Contour)</button>
+                  </div>
+                  <button style={{...styles.secondaryBtn, background: 'white'}} onClick={simulateGpsTracking}>🔴 Lancer le relevé GPS</button>
+                  {simulatedArea && <p style={{ color: '#16a34a', fontWeight: 'bold' }}>Superficie calculée : {simulatedArea} ha</p>}
+                </div>
+              </>
+            ) : (
+              <>
+                <input type="text" placeholder="Type de produits vendus (Igname, Tomate...)" style={styles.input} />
+                <input type="text" placeholder="Capacité de stockage estimée (Tonnes ou Sacs)" style={styles.input} />
+              </>
+            )}
+          </div>
+          <button style={{...styles.primaryBtn, width: '100%', background: '#0f172a'}}>✅ Finaliser l'inscription & Ouvrir le compte bancaire</button>
+        </div>
+
+        <div style={styles.section}>
+          <h2>📋 Base de données de vos Bénéficiaires</h2>
+          <table style={styles.table}>
+            <thead><tr><th>Catégorie</th><th>Nom</th><th>ID Carte</th><th>Localité</th><th>Détails Spécifiques</th><th>Épargne</th></tr></thead>
+            <tbody>
+              {myBeneficiaries.map(f => (
+                <tr key={f.id}>
+                  <td>{f.category === 'Agriculteur' ? '🌱 Agr.' : '🛒 Com.'}</td>
+                  <td>{f.fullName}</td><td>{f.idCardNumber}</td><td>{f.villageOrMarket}</td>
+                  <td>{f.category === 'Agriculteur' ? `${f.areaHectares} ha - ${f.activity}` : `${f.storageCapacity} - ${f.activity}`}</td>
+                  <td>{f.savings.toLocaleString()} CFA</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. ESPACE BÉNÉFICIAIRE (Reste inchangé mais hérite des nouvelles données)
+  if (appView === 'beneficiary_dashboard' && currentUser) {
+    return (
+      <div style={styles.appContainer}>
+        <NavBar title={`Espace de ${currentUser.fullName} (${currentUser.category})`} onLogout={() => {setCurrentBeneficiaryId(null); setAppView('login');}} />
+        
+        {/* Résumé du code d'espace bénéficiaire précédent */}
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '20px' }}>
+          <div style={styles.virtualCard}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '20px', fontWeight: 'bold' }}>AgroCard</span><span>💳</span>
+            </div>
+            <div style={{ margin: '20px 0', fontSize: '22px', letterSpacing: '2px' }}>{currentUser.cardNumber}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div><div style={{ fontSize: '10px' }}>{currentUser.category.toUpperCase()}</div><div style={{ fontSize: '14px' }}>{currentUser.fullName}</div></div>
+              <div style={{ textAlign: 'right' }}><div style={{ fontSize: '10px' }}>SOLDE</div><div style={{ fontSize: '16px', fontWeight: 'bold' }}>{currentUser.savings.toLocaleString()} CFA <button onClick={() => speakText(`Solde de ${currentUser.savings} francs`)} style={styles.voiceBtn}>🔊</button></div></div>
+            </div>
+          </div>
+          
+          <div style={styles.actionPanel}>
+            <h3>Vos informations validées</h3>
+            <p><strong>Identité NNI :</strong> {currentUser.idCardNumber}</p>
+            <p><strong>Affiliation :</strong> {currentUser.fintechCode}</p>
+            {currentUser.category === 'Agriculteur' && <p><strong>Superficie tracée :</strong> {currentUser.areaHectares} Hectares</p>}
+            <button style={styles.primaryBtn}>📥 Payer Cotisation Susu</button>
           </div>
         </div>
 
+        {/* Intégration future Map & API Météo affichée au bénéficiaire */}
         <div style={styles.section}>
-          <h2>📍 Cartographie Globale des Parcelles</h2>
+          <h2>📍 Suivi Satellitaire (NDVI & Météo)</h2>
           <div style={styles.mapContainer}>
              <div style={styles.mapOverlay}>
-                {farmers.map(f => (
-                  <div key={f.id} style={styles.mapPin}>
-                    📍 <span style={styles.pinTooltip}>{f.fullName} ({f.village})</span>
-                  </div>
-                ))}
-             </div>
-          </div>
-        </div>
-
-        <div style={styles.section}>
-          <h2>📋 Gestion des Bénéficiaires</h2>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th>Nom</th>
-                  <th>Activité</th>
-                  <th>Épargne</th>
-                  <th>Statut Assurance</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {farmers.map(f => (
-                  <tr key={f.id}>
-                    <td>{f.fullName}</td>
-                    <td>{f.activity}</td>
-                    <td>{f.savings.toLocaleString()} FCFA</td>
-                    <td>
-                      <span style={f.insuranceStatus === 'Actif' ? styles.badgeGreen : styles.badgeOrange}>
-                        {f.insuranceStatus}
-                      </span>
-                    </td>
-                    <td>
-                      <button style={styles.actionBtn}>Détails / Suivi</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 3. Écran Bénéficiaire
-  if (userRole === 'beneficiary' && currentUser) {
-    return (
-      <div style={styles.appContainer}>
-        <NavBar title={`Espace de ${currentUser.fullName}`} onLogout={handleLogout} />
-        
-        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '20px' }}>
-          
-          {/* Carte Virtuelle */}
-          <div style={styles.virtualCard}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '20px', fontWeight: 'bold' }}>AgroCard</span>
-              <span style={{ fontSize: '24px' }}>💳</span>
-            </div>
-            <div style={{ margin: '20px 0', fontSize: '22px', letterSpacing: '2px' }}>
-              {currentUser.cardNumber}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ fontSize: '10px', opacity: 0.8 }}>BÉNÉFICIAIRE</div>
-                <div style={{ fontSize: '14px' }}>{currentUser.fullName.toUpperCase()}</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '10px', opacity: 0.8 }}>SOLDE ÉPARGNE</div>
-                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                  {currentUser.savings.toLocaleString()} FCFA
-                  {/* NOUVEAU: Bouton Vocal */}
-                  <button onClick={() => speakText(`Votre solde d'épargne est de ${currentUser.savings} francs CFA`)} style={styles.voiceBtn}>🔊</button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Actions Rapides */}
-          <div style={styles.actionPanel}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3>Opérations Susu</h3>
-              <button onClick={() => speakText("Voici vos opérations. Vous pouvez payer votre cotisation ou déclarer un problème avec la pluie.")} style={styles.voiceBtn}>🔊</button>
-            </div>
-            
-            <button style={styles.primaryBtn} onClick={() => simulatePayment(5000, 'cotisation')}>
-              📥 Payer ma cotisation (5 000 FCFA)
-            </button>
-            <button style={{...styles.secondaryBtn, borderColor: '#ef4444', color: '#ef4444'}} onClick={() => simulatePayment(0, 'assurance')}>
-              🚨 Déclarer un sinistre climatique
-            </button>
-            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '10px' }}>
-              Statut Assurance : <strong>{currentUser.insuranceStatus}</strong>
-            </p>
-          </div>
-        </div>
-
-        {/* NOUVEAU: Services Financiers Complémentaires (Carbone & Crédit) */}
-        <div style={styles.gridDashboard}>
-          <div style={styles.section}>
-            <h3>🌱 Vente Carbone</h3>
-            <p>Revenus validés grâce à vos pratiques écologiques.</p>
-            <h2 style={{ color: '#16a34a' }}>{currentUser.carbonCredits.toLocaleString()} FCFA</h2>
-            <button style={styles.secondaryBtn} onClick={() => simulatePayment(currentUser.carbonCredits, 'carbone')}>
-              Encaisser sur ma carte
-            </button>
-          </div>
-          
-          <div style={styles.section}>
-            <h3>🏦 Crédit Agricole</h3>
-            <p>Accès au financement basé sur votre historique Susu.</p>
-            <p>Statut : <span style={currentUser.loanStatus === 'Éligible' ? styles.badgeGreen : styles.badgeOrange}>{currentUser.loanStatus}</span></p>
-            <button style={styles.secondaryBtn}>Demander un prêt (Intrants)</button>
-          </div>
-        </div>
-
-        {/* NOUVEAU: Suivi des activités (Preuves) */}
-        <div style={styles.section}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-             <h2>📑 Suivi des Activités (Preuves)</h2>
-             <button onClick={() => speakText("Voici l'historique de vos activités agricoles qui prouvent que vous travaillez bien votre parcelle.")} style={styles.voiceBtn}>🔊</button>
-          </div>
-          <p style={{ color: '#64748b' }}>Historique de la parcelle pour validation d'assurance et de crédit.</p>
-          <ul style={{ lineHeight: '1.8', color: '#0f172a' }}>
-            {currentUser.activities.map((act, index) => (
-              <li key={index}>{act}</li>
-            ))}
-          </ul>
-        </div>
-
-        <div style={styles.section}>
-          <h2>📍 Ma Parcelle ({currentUser.village})</h2>
-          <div style={{...styles.mapContainer, height: '200px'}}>
-             <div style={styles.mapOverlay}>
-                <div style={{...styles.mapPin, transform: 'scale(1.5)'}}>
-                  📍
+                <div style={{textAlign: 'center', color: '#334155'}}>
+                  <p>🗺️ Espace réservé pour la carte Leaflet détaillée</p>
+                  <p>Intégration API Météo & NDVI active sur ces coordonnées.</p>
                 </div>
              </div>
           </div>
-          <p style={{ marginTop: '10px', color: '#64748b' }}>Coordonnées GPS : {currentUser.gpsLocation}</p>
-        </div>
-
-        <div style={styles.section}>
-           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-             <h2>🌤️ Alertes Météo Locales</h2>
-             <button onClick={() => speakText("Attention, " + climateAlerts[0].description)} style={styles.voiceBtn}>🔊</button>
-          </div>
-          {climateAlerts.map(alert => (
-            <div key={alert.id} style={alert.severity === 'Élevé' ? styles.alertHigh : styles.alertLow}>
-              <strong>{alert.title}</strong>
-              <p style={{ margin: '5px 0 0 0' }}>{alert.description}</p>
-            </div>
-          ))}
         </div>
       </div>
     );
@@ -355,237 +338,27 @@ const NavBar = ({ title, onLogout }: { title: string, onLogout: () => void }) =>
   </div>
 );
 
-const MetricCard = ({ title, value, icon }: { title: string, value: string, icon: string }) => (
-  <div style={styles.metricCard}>
-    <div style={{ fontSize: '30px' }}>{icon}</div>
-    <div>
-      <div style={{ color: '#64748b', fontSize: '14px', fontWeight: 'bold' }}>{title.toUpperCase()}</div>
-      <div style={{ color: '#0f172a', fontSize: '24px', fontWeight: 'bold' }}>{value}</div>
-    </div>
-  </div>
-);
-
-// --- Styles CSS-in-JS (Modern UX/UI) ---
+// --- Styles ---
 const styles: Record<string, React.CSSProperties> = {
-  // Conteneurs
-  loginContainer: {
-    height: '100vh',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f1f5f9',
-    fontFamily: '"Inter", sans-serif',
-  },
-  loginBox: {
-    background: 'white',
-    padding: '40px',
-    borderRadius: '16px',
-    boxShadow: '0 10px 25px rgba(0,0,0,0.05)',
-    textAlign: 'center',
-    width: '100%',
-    maxWidth: '400px',
-  },
-  appContainer: {
-    minHeight: '100vh',
-    backgroundColor: '#f8fafc',
-    fontFamily: '"Inter", sans-serif',
-    paddingBottom: '40px',
-  },
-  section: {
-    background: 'white',
-    margin: '20px',
-    padding: '24px',
-    borderRadius: '16px',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
-  },
+  loginContainer: { height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: '#f1f5f9', fontFamily: '"Inter", sans-serif' },
+  loginBox: { background: 'white', padding: '40px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', textAlign: 'center', width: '100%', maxWidth: '500px' },
+  appContainer: { minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: '"Inter", sans-serif', paddingBottom: '40px' },
+  section: { background: 'white', margin: '20px', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' },
+  navbar: { background: 'linear-gradient(90deg, #166534, #15803d)', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  input: { padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box' },
   
-  // Navigation
-  navbar: {
-    background: 'linear-gradient(90deg, #166534, #15803d)',
-    padding: '20px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-  },
+  // Boutons et Onglets
+  primaryBtn: { background: '#16a34a', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', width: '100%', fontWeight: 'bold', marginBottom: '10px' },
+  secondaryBtn: { background: 'transparent', color: '#0f172a', border: '1px solid #cbd5e1', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', width: '100%', fontWeight: 'bold', marginBottom: '10px' },
+  logoutBtn: { background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' },
+  voiceBtn: { background: '#e0f2fe', border: 'none', borderRadius: '50%', width: '35px', height: '35px', cursor: 'pointer', marginLeft: '10px' },
+  tabActive: { flex: 1, padding: '10px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' },
+  tabInactive: { flex: 1, padding: '10px', background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' },
   
-  // Formulaires (Nouveau)
-  input: {
-    padding: '12px',
-    borderRadius: '8px',
-    border: '1px solid #cbd5e1',
-    flex: '1',
-    minWidth: '200px',
-  },
-
-  // Grilles et Cartes
-  gridDashboard: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-    gap: '20px',
-    padding: '0 20px',
-  },
-  metricCard: {
-    background: 'white',
-    padding: '20px',
-    borderRadius: '12px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '15px',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
-    border: '1px solid #e2e8f0',
-    marginTop: '20px',
-  },
-  virtualCard: {
-    background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-    color: 'white',
-    padding: '25px',
-    borderRadius: '16px',
-    width: '100%',
-    maxWidth: '350px',
-    boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
-    margin: '0 20px',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  actionPanel: {
-    background: 'white',
-    padding: '20px',
-    borderRadius: '16px',
-    flex: '1',
-    minWidth: '280px',
-    margin: '0 20px',
-    border: '1px solid #e2e8f0',
-  },
-  
-  // Boutons
-  primaryBtn: {
-    background: '#16a34a',
-    color: 'white',
-    border: 'none',
-    padding: '12px 20px',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    width: '100%',
-    fontWeight: 'bold',
-    marginBottom: '10px',
-    transition: 'background 0.3s',
-  },
-  secondaryBtn: {
-    background: 'transparent',
-    color: '#0f172a',
-    border: '1px solid #cbd5e1',
-    padding: '12px 20px',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    width: '100%',
-    fontWeight: 'bold',
-    marginBottom: '10px',
-  },
-  logoutBtn: {
-    background: 'rgba(255,255,255,0.2)',
-    color: 'white',
-    border: 'none',
-    padding: '8px 16px',
-    borderRadius: '6px',
-    cursor: 'pointer',
-  },
-  actionBtn: {
-    background: '#f1f5f9',
-    border: 'none',
-    padding: '6px 12px',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    color: '#0f172a',
-  },
-  // NOUVEAU : Bouton pour déclencher la voix
-  voiceBtn: {
-    background: '#e0f2fe',
-    border: 'none',
-    borderRadius: '50%',
-    width: '35px',
-    height: '35px',
-    fontSize: '18px',
-    cursor: 'pointer',
-    marginLeft: '10px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-  },
-
-  // Tableau
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse',
-    textAlign: 'left',
-  },
-  
-  // Badges & Alertes
-  badgeGreen: {
-    background: '#dcfce7',
-    color: '#166534',
-    padding: '4px 8px',
-    borderRadius: '999px',
-    fontSize: '12px',
-    fontWeight: 'bold',
-  },
-  badgeOrange: {
-    background: '#fef3c7',
-    color: '#b45309',
-    padding: '4px 8px',
-    borderRadius: '999px',
-    fontSize: '12px',
-    fontWeight: 'bold',
-  },
-  alertHigh: {
-    background: '#fee2e2',
-    borderLeft: '4px solid #ef4444',
-    padding: '15px',
-    margin: '10px 0',
-    borderRadius: '4px',
-    color: '#7f1d1d',
-  },
-  alertLow: {
-    background: '#dcfce7',
-    borderLeft: '4px solid #22c55e',
-    padding: '15px',
-    margin: '10px 0',
-    borderRadius: '4px',
-    color: '#14532d',
-  },
-
-  // Carte GPS (Simulation)
-  mapContainer: {
-    width: '100%',
-    height: '300px',
-    backgroundColor: '#e2e8f0',
-    borderRadius: '12px',
-    position: 'relative',
-    overflow: 'hidden',
-    backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)',
-    backgroundSize: '20px 20px',
-  },
-  mapOverlay: {
-    width: '100%',
-    height: '100%',
-    display: 'flex',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  mapPin: {
-    fontSize: '24px',
-    cursor: 'pointer',
-    position: 'relative',
-    animation: 'bounce 2s infinite',
-  },
-  pinTooltip: {
-    position: 'absolute',
-    top: '-30px',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    background: '#0f172a',
-    color: 'white',
-    padding: '4px 8px',
-    borderRadius: '4px',
-    fontSize: '12px',
-    whiteSpace: 'nowrap',
-  }
+  // Cartes & Tableaux
+  virtualCard: { background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: 'white', padding: '25px', borderRadius: '16px', width: '100%', maxWidth: '350px' },
+  actionPanel: { background: 'white', padding: '20px', borderRadius: '16px', flex: '1', minWidth: '280px', border: '1px solid #e2e8f0' },
+  table: { width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' },
+  mapContainer: { width: '100%', height: '300px', backgroundColor: '#e2e8f0', borderRadius: '12px', position: 'relative', overflow: 'hidden', backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '20px 20px' },
+  mapOverlay: { width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }
 };
