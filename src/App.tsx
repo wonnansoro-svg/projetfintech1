@@ -19,7 +19,7 @@ const auth = getAuth(app);
 // TYPES
 // ============================================================================
 
-type BenCategory = 'Agriculteur' | 'Commerçante' | 'Transporteur' | 'biometric';
+type BenCategory = 'Agriculteur' | 'Commerçante' | 'Transporteur';
 type InsuranceStatus = 'Actif' | 'En attente' | 'Sinistré' | 'Remboursé';
 type LoanStatus = 'Éligible' | 'En cours' | 'Non éligible' | 'Remboursé';
 type RiskLevel = 'Faible' | 'Moyen' | 'Élevé';

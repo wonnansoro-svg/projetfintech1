@@ -5,3 +5,12 @@
     { "path": "./tsconfig.node.json" }
   ]
 }
+{
+  "compilerOptions": {
+    "jsx": "react-jsx", // ou "react" selon votre version
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "types": ["node"]
+  }
+}
