@@ -11,6 +11,10 @@ interface Farmer {
   insuranceStatus: 'Actif' | 'En attente' | 'Sinistré';
   gpsLocation: string;
   cardNumber: string;
+  // NOUVEAU: Champs manquants ajoutés
+  carbonCredits: number;
+  loanStatus: 'Éligible' | 'En cours' | 'Non éligible';
+  activities: string[];
 }
 
 interface ClimateAlert {
@@ -20,7 +24,7 @@ interface ClimateAlert {
   severity: 'Élevé' | 'Moyen' | 'Faible';
 }
 
-// --- Données initiales ---
+// --- Données initiales enrichies ---
 const initialFarmers: Farmer[] = [
   {
     id: '1',
@@ -32,6 +36,9 @@ const initialFarmers: Farmer[] = [
     insuranceStatus: 'Actif',
     gpsLocation: '5.8118, -5.2750',
     cardNumber: '4532 1234 5678 9012',
+    carbonCredits: 15000,
+    loanStatus: 'Éligible',
+    activities: ['12/04/2024: Semis terminé (Preuve GPS ✅)', '05/05/2024: Inspection agroforesterie ✅'],
   },
   {
     id: '2',
@@ -43,6 +50,9 @@ const initialFarmers: Farmer[] = [
     insuranceStatus: 'En attente',
     gpsLocation: '7.6938, -5.0303',
     cardNumber: '4532 9876 5432 1098',
+    carbonCredits: 0,
+    loanStatus: 'Non éligible',
+    activities: ['01/05/2024: Stockage marchandise enregistré ✅'],
   },
 ];
 
@@ -67,6 +77,18 @@ export default function App() {
   const [userRole, setUserRole] = useState<'admin' | 'beneficiary' | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+  // --- NOUVEAU: Fonction de Synthèse Vocale (Accessibilité) ---
+  const speakText = (text: string) => {
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'fr-FR'; // Langue française (en production, on peut utiliser des API vocales locales)
+      utterance.rate = 0.9; // Parle un peu plus lentement pour plus de clarté
+      window.speechSynthesis.speak(utterance);
+    } else {
+      alert("Votre navigateur ne supporte pas la lecture vocale.");
+    }
+  };
+
   // Stats globales (Admin)
   const totalSavings = useMemo(() => farmers.reduce((acc, item) => acc + item.savings, 0), [farmers]);
 
@@ -86,20 +108,25 @@ export default function App() {
     setCurrentUserId(null);
   };
 
-  const simulatePayment = (amount: number, type: 'cotisation' | 'assurance') => {
+  const simulatePayment = (amount: number, type: 'cotisation' | 'assurance' | 'carbone') => {
     if (!currentUser) return;
+    
+    // NOUVEAU: Retour vocal
+    if (type === 'cotisation') speakText(`Vous avez payé ${amount} francs CFA pour votre cotisation Susu.`);
+    if (type === 'assurance') speakText("Votre déclaration de sinistre climatique a été envoyée avec succès.");
+    if (type === 'carbone') speakText(`Félicitations, vous avez reçu ${amount} francs CFA pour la vente de vos crédits carbone.`);
+
     const updated = farmers.map(f => {
       if (f.id === currentUser.id) {
         return { 
           ...f, 
-          savings: type === 'cotisation' ? f.savings + amount : f.savings,
-          // Simulation logic here...
+          savings: f.savings + amount,
         };
       }
       return f;
     });
     setFarmers(updated);
-    alert(type === 'cotisation' ? `Paiement de ${amount} FCFA réussi !` : `Demande d'indemnisation envoyée.`);
+    if(type !== 'assurance') alert(`Transaction de ${amount} FCFA réussie !`);
   };
 
   // --- Vues (Écrans) ---
@@ -141,6 +168,19 @@ export default function App() {
           <MetricCard title="Assurances Actives" value={farmers.filter(f => f.insuranceStatus === 'Actif').length.toString()} icon="🛡️" />
         </div>
 
+        {/* NOUVEAU: Module d'enrôlement */}
+        <div style={styles.section}>
+          <h2>📝 Enrôlement d'un nouveau bénéficiaire</h2>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <input type="text" placeholder="Nom complet" style={styles.input} />
+            <input type="text" placeholder="Activité (ex: Cacao, Maïs)" style={styles.input} />
+            <button style={{...styles.primaryBtn, width: 'auto'}} onClick={() => alert("Simulation: Capture des coordonnées GPS en cours...")}>
+              📍 Capturer GPS Parcelle
+            </button>
+            <button style={{...styles.primaryBtn, width: 'auto', background: '#0f172a'}}>Enregistrer</button>
+          </div>
+        </div>
+
         <div style={styles.section}>
           <h2>📍 Cartographie Globale des Parcelles</h2>
           <div style={styles.mapContainer}>
@@ -179,7 +219,7 @@ export default function App() {
                       </span>
                     </td>
                     <td>
-                      <button style={styles.actionBtn}>Détails</button>
+                      <button style={styles.actionBtn}>Détails / Suivi</button>
                     </td>
                   </tr>
                 ))}
@@ -215,14 +255,22 @@ export default function App() {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: '10px', opacity: 0.8 }}>SOLDE ÉPARGNE</div>
-                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{currentUser.savings.toLocaleString()} FCFA</div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
+                  {currentUser.savings.toLocaleString()} FCFA
+                  {/* NOUVEAU: Bouton Vocal */}
+                  <button onClick={() => speakText(`Votre solde d'épargne est de ${currentUser.savings} francs CFA`)} style={styles.voiceBtn}>🔊</button>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Actions Rapides */}
           <div style={styles.actionPanel}>
-            <h3>Opérations Financières</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3>Opérations Susu</h3>
+              <button onClick={() => speakText("Voici vos opérations. Vous pouvez payer votre cotisation ou déclarer un problème avec la pluie.")} style={styles.voiceBtn}>🔊</button>
+            </div>
+            
             <button style={styles.primaryBtn} onClick={() => simulatePayment(5000, 'cotisation')}>
               📥 Payer ma cotisation (5 000 FCFA)
             </button>
@@ -233,6 +281,39 @@ export default function App() {
               Statut Assurance : <strong>{currentUser.insuranceStatus}</strong>
             </p>
           </div>
+        </div>
+
+        {/* NOUVEAU: Services Financiers Complémentaires (Carbone & Crédit) */}
+        <div style={styles.gridDashboard}>
+          <div style={styles.section}>
+            <h3>🌱 Vente Carbone</h3>
+            <p>Revenus validés grâce à vos pratiques écologiques.</p>
+            <h2 style={{ color: '#16a34a' }}>{currentUser.carbonCredits.toLocaleString()} FCFA</h2>
+            <button style={styles.secondaryBtn} onClick={() => simulatePayment(currentUser.carbonCredits, 'carbone')}>
+              Encaisser sur ma carte
+            </button>
+          </div>
+          
+          <div style={styles.section}>
+            <h3>🏦 Crédit Agricole</h3>
+            <p>Accès au financement basé sur votre historique Susu.</p>
+            <p>Statut : <span style={currentUser.loanStatus === 'Éligible' ? styles.badgeGreen : styles.badgeOrange}>{currentUser.loanStatus}</span></p>
+            <button style={styles.secondaryBtn}>Demander un prêt (Intrants)</button>
+          </div>
+        </div>
+
+        {/* NOUVEAU: Suivi des activités (Preuves) */}
+        <div style={styles.section}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+             <h2>📑 Suivi des Activités (Preuves)</h2>
+             <button onClick={() => speakText("Voici l'historique de vos activités agricoles qui prouvent que vous travaillez bien votre parcelle.")} style={styles.voiceBtn}>🔊</button>
+          </div>
+          <p style={{ color: '#64748b' }}>Historique de la parcelle pour validation d'assurance et de crédit.</p>
+          <ul style={{ lineHeight: '1.8', color: '#0f172a' }}>
+            {currentUser.activities.map((act, index) => (
+              <li key={index}>{act}</li>
+            ))}
+          </ul>
         </div>
 
         <div style={styles.section}>
@@ -248,7 +329,10 @@ export default function App() {
         </div>
 
         <div style={styles.section}>
-          <h2>🌤️ Alertes Météo Locales</h2>
+           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+             <h2>🌤️ Alertes Météo Locales</h2>
+             <button onClick={() => speakText("Attention, " + climateAlerts[0].description)} style={styles.voiceBtn}>🔊</button>
+          </div>
           {climateAlerts.map(alert => (
             <div key={alert.id} style={alert.severity === 'Élevé' ? styles.alertHigh : styles.alertLow}>
               <strong>{alert.title}</strong>
@@ -325,12 +409,21 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
   },
   
+  // Formulaires (Nouveau)
+  input: {
+    padding: '12px',
+    borderRadius: '8px',
+    border: '1px solid #cbd5e1',
+    flex: '1',
+    minWidth: '200px',
+  },
+
   // Grilles et Cartes
   gridDashboard: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
     gap: '20px',
-    padding: '20px',
+    padding: '0 20px',
   },
   metricCard: {
     background: 'white',
@@ -341,6 +434,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '15px',
     boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
     border: '1px solid #e2e8f0',
+    marginTop: '20px',
   },
   virtualCard: {
     background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
@@ -404,6 +498,18 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     color: '#0f172a',
   },
+  // NOUVEAU : Bouton pour déclencher la voix
+  voiceBtn: {
+    background: '#e0f2fe',
+    border: 'none',
+    borderRadius: '50%',
+    width: '35px',
+    height: '35px',
+    fontSize: '18px',
+    cursor: 'pointer',
+    marginLeft: '10px',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+  },
 
   // Tableau
   table: {
@@ -454,7 +560,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '12px',
     position: 'relative',
     overflow: 'hidden',
-    // Motif simulant une carte topographique simple
     backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)',
     backgroundSize: '20px 20px',
   },
