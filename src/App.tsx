@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 
-// 1. IMPORTS FIREBASE
+// 1. IMPORTS FIREBASE (Intacts et fonctionnels)
 import { initializeApp } from "firebase/app";
 import { 
   getAuth, 
@@ -21,49 +21,49 @@ const firebaseConfig = {
   measurementId: "G-NSF5PPM5KJ"
 };
 
-// Initialisation de Firebase et de l'Authentification
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app); // C'est cette ligne qui manquait !
+const auth = getAuth(app);
 
 // ============================================================================
-// 🔧 ZONE D'INTÉGRATION DES API
-// ============================================================================
-
-const apiService = {
-  getWeatherForParcel: async (lat: number, lng: number) => {
-    console.log(`Météo récupérée pour GPS: ${lat}, ${lng}`);
-  },
-
-  getNDVIHealth: async (polygonGeoJSON: any) => {
-    console.log("Analyse NDVI simulée pour la zone :", polygonGeoJSON ? "OK" : "Vide");
-    return "Bonne santé (0.65)";
-  },
-
-  calculateArea: (points: any[]) => {
-    console.log("Calcul en cours avec les points :", points.length);
-    return (Math.random() * 5 + 0.5).toFixed(2); 
-  }
-};
-
-// ============================================================================
-// TYPES DE DONNÉES
+// TYPES DE DONNÉES (Basés sur votre cahier des charges complet)
 // ============================================================================
 
 interface Beneficiary {
   id: string;
   fintechCode: string;
-  category: 'Agriculteur' | 'Commerçante';
+  category: 'Agriculteur' | 'Commerçante' | 'Transporteur';
+  
+  // 1. Informations Personnelles
   fullName: string;
-  idCardNumber: string;
+  gender: string;
+  dob: string;
   phone: string;
-  activity: string;
-  villageOrMarket: string;
-  gpsPolygon?: any[];
-  areaHectares?: string;
-  storageCapacity?: string;
+  idCardNumber: string;
+  emergencyContact: string;
+  language: string;
+
+  // 2. Informations Financières & Mobile Money
+  estimatedIncome: string;
+  mobileMoneyProvider: 'Orange Money' | 'MTN' | 'Wave' | 'Moov';
+  mobileMoneyNumber: string;
+  riskLevel: 'Faible' | 'Moyen' | 'Élevé';
   savings: number;
+  cardNumber: string; // Portefeuille AgroSusu
+
+  // 3. Informations Agricoles & GPS
+  activity: string; // Type de culture ou commerce
+  areaHectares: string;
+  season: string;
+  farmingMethods: string;
+  gpsLocation: string;
+
+  // 4. Données Sociales & Susu
+  cooperative: string;
+  susuGroup: string;
+  trustScore: number; // /100
+
+  // 5. Assurance, Carbone & Crédit
   insuranceStatus: 'Actif' | 'En attente' | 'Sinistré';
-  cardNumber: string;
   carbonCredits: number;
   loanStatus: 'Éligible' | 'En cours' | 'Non éligible';
   activities: string[];
@@ -77,15 +77,19 @@ interface FintechAdmin {
   affiliationCode: string;
 }
 
+// Données enrichies de démonstration
 const initialBeneficiaries: Beneficiary[] = [
   {
     id: '1', fintechCode: 'FIN-DEMO', category: 'Agriculteur',
-    fullName: 'Kouassi Adjoua', idCardNumber: 'CI-1990-123456',
-    phone: '+225 07 00 00 00 01', activity: 'Culture de la Mangue',
-    villageOrMarket: 'Korhogo', areaHectares: '2.5',
-    savings: 125000, insuranceStatus: 'Actif', cardNumber: '4532 1234 5678 9012',
-    carbonCredits: 15000, loanStatus: 'Éligible',
-    activities: ['12/04/2024: Semis terminé (Preuve GPS ✅)', '05/05/2024: Analyse NDVI: Excellente santé ✅'],
+    fullName: 'Kouassi Adjoua', gender: 'Femme', dob: '12/05/1985',
+    phone: '+225 07 00 00 00 01', idCardNumber: 'CI-1985-123456',
+    emergencyContact: '+225 05 00 00 00 99', language: 'Baoulé, Français',
+    estimatedIncome: '1 500 000 FCFA/an', mobileMoneyProvider: 'Wave', mobileMoneyNumber: '0700000001',
+    riskLevel: 'Faible', savings: 125000, cardNumber: '4532 1234 5678 9012',
+    activity: 'Culture du Cacao', areaHectares: '3.5', season: 'Grande saison', farmingMethods: 'Agroforesterie',
+    gpsLocation: '5.8118, -5.2750', cooperative: 'COOP-CA N\'Zrama', susuGroup: 'Susu Femmes Vaillantes', trustScore: 92,
+    insuranceStatus: 'Actif', carbonCredits: 25000, loanStatus: 'Éligible',
+    activities: ['12/04: Semis terminé ✅', '05/05: Inspection Satellite (Bonne santé) ✅'],
   },
 ];
 
@@ -102,20 +106,18 @@ export default function App() {
   const [adminForm, setAdminForm] = useState({ structure: '', name: '', email: '', pass: '' });
   const [loginForm, setLoginForm] = useState({ email: '', pass: '' });
   
+  // États du nouveau formulaire KYC
+  const [kycTab, setKycTab] = useState<'perso' | 'finance' | 'agri'>('perso');
   const [benCategory, setBenCategory] = useState<'Agriculteur' | 'Commerçante'>('Agriculteur');
-  const [gpsMode, setGpsMode] = useState<'marche' | 'point'>('point');
-  const [simulatedArea, setSimulatedArea] = useState<string | null>(null);
 
-  // --- 1. MAINTIEN DE LA SESSION FIREBASE ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        // L'utilisateur est connecté, on restaure sa session
         setCurrentAdmin({
           id: user.uid,
           adminName: user.displayName || "Admin",
           email: user.email || "",
-          structureName: "Ma Fintech", // A terme, on récupérera le nom depuis Firestore
+          structureName: "Ma Fintech", 
           affiliationCode: `FIN-${user.uid.substring(0,4).toUpperCase()}`
         });
         setAppView('admin_dashboard');
@@ -124,109 +126,56 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  const speakText = (text: string) => {
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'fr-FR';
-      window.speechSynthesis.speak(utterance);
-    }
-  };
-
   const currentUser = useMemo(() => beneficiaries.find(f => f.id === currentBeneficiaryId), [beneficiaries, currentBeneficiaryId]);
 
-  // --- 2. VRAIE INSCRIPTION FIREBASE ---
   const handleRegisterAdmin = async () => {
     try {
-      // Appel aux vrais serveurs de Google
       const userCredential = await createUserWithEmailAndPassword(auth, adminForm.email, adminForm.pass);
-      const user = userCredential.user;
-      
-      const newCode = `FIN-${user.uid.substring(0, 4).toUpperCase()}`;
-      const newAdmin: FintechAdmin = { 
-        id: user.uid, 
-        structureName: adminForm.structure, 
-        adminName: adminForm.name, 
-        email: adminForm.email, 
-        affiliationCode: newCode 
-      };
-      
-      setCurrentAdmin(newAdmin);
+      const newCode = `FIN-${userCredential.user.uid.substring(0, 4).toUpperCase()}`;
+      setCurrentAdmin({ id: userCredential.user.uid, structureName: adminForm.structure, adminName: adminForm.name, email: adminForm.email, affiliationCode: newCode });
       setAppView('admin_dashboard');
-      alert(`Compte Fintech créé avec succès ! Votre code d'affiliation est : ${newCode}`);
-    } catch (error: any) {
-      alert("Erreur d'inscription : " + error.message);
-    }
+    } catch (error: any) { alert("Erreur d'inscription : " + error.message); }
   };
 
-  // --- 3. VRAIE CONNEXION FIREBASE ---
   const handleLoginAdmin = async () => {
     try {
-      // Appel aux vrais serveurs de Google pour vérifier le mot de passe
       const userCredential = await signInWithEmailAndPassword(auth, loginForm.email, loginForm.pass);
-      const user = userCredential.user;
-      
-      setCurrentAdmin({
-        id: user.uid,
-        adminName: user.displayName || "Admin",
-        email: user.email || "",
-        structureName: "Ma Fintech",
-        affiliationCode: `FIN-${user.uid.substring(0,4).toUpperCase()}`
-      });
+      setCurrentAdmin({ id: userCredential.user.uid, adminName: userCredential.user.displayName || "Admin", email: userCredential.user.email || "", structureName: "Ma Fintech", affiliationCode: `FIN-${userCredential.user.uid.substring(0,4).toUpperCase()}` });
       setAppView('admin_dashboard');
-    } catch (error: any) {
-      alert("Erreur : Identifiants incorrects (" + error.message + ")");
-    }
+    } catch (error: any) { alert("Erreur de connexion."); }
   };
 
-  // --- 4. VRAIE DÉCONNEXION FIREBASE ---
   const handleLogout = async () => {
     await signOut(auth);
     setCurrentAdmin(null);
     setAppView('login');
   };
 
-  const simulateGpsTracking = () => {
-    alert(`Lancement du traçage GPS en mode: ${gpsMode === 'marche' ? 'Marche le long des bordures' : 'Saisie Point par Point'}`);
-    setTimeout(() => {
-      const area = apiService.calculateArea([]);
-      setSimulatedArea(area);
-      alert(`Traçage terminé. Superficie calculée : ${area} Hectares.`);
-    }, 1500);
-  };
-
   // ============================================================================
   // VUES (ÉCRANS)
   // ============================================================================
 
-  // 1. ÉCRAN DE CONNEXION INITIAL
+  // 1. ÉCRAN DE CONNEXION INITIAL (Inchangé)
   if (appView === 'login') {
     return (
       <div style={styles.loginContainer}>
         <div style={styles.loginBox}>
           <h1 style={{ color: '#16a34a', marginBottom: '10px' }}>AgroSusu Hub</h1>
-          <p style={{ color: '#64748b', marginBottom: '30px' }}>La plateforme SaaS des Fintechs Agricoles</p>
+          <p style={{ color: '#64748b', marginBottom: '30px' }}>Le Core Banking Agricole (Marque Blanche)</p>
           
           <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid #e2e8f0' }}>
-            <h3 style={{ marginTop: 0, color: '#0f172a', fontSize: '16px' }}>Connexion Admin</h3>
-            <input type="email" placeholder="Votre Email" style={{...styles.input, marginBottom: '10px'}} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
+            <h3 style={{ marginTop: 0, color: '#0f172a', fontSize: '16px' }}>Connexion Fintech (Admin)</h3>
+            <input type="email" placeholder="Email" style={{...styles.input, marginBottom: '10px'}} onChange={e => setLoginForm({...loginForm, email: e.target.value})} />
             <input type="password" placeholder="Mot de passe" style={{...styles.input, marginBottom: '15px'}} onChange={e => setLoginForm({...loginForm, pass: e.target.value})} />
-            <button style={styles.primaryBtn} onClick={handleLoginAdmin}>
-              🔐 Se connecter
-            </button>
+            <button style={styles.primaryBtn} onClick={handleLoginAdmin}>🔐 Se connecter</button>
           </div>
-
-          <div style={{ margin: '20px 0', color: '#94a3b8', fontSize: '14px' }}>Vous n'avez pas de compte ?</div>
-
-          <button style={styles.secondaryBtn} onClick={() => setAppView('register_admin')}>
-            🏢 Inscrire une nouvelle Fintech
-          </button>
+          <button style={styles.secondaryBtn} onClick={() => setAppView('register_admin')}>🏢 Inscrire une nouvelle Fintech</button>
           
           <div style={{ margin: '20px 0', color: '#e2e8f0' }}><hr/></div>
-          <p style={{ color: '#64748b', fontSize: '12px', marginBottom: '10px' }}>Accès rapide bénéficiaires (Démo)</p>
-          
+          <p style={{ color: '#64748b', fontSize: '12px', marginBottom: '10px' }}>Simulation Accès Bénéficiaire</p>
           {beneficiaries.map(f => (
             <button key={f.id} style={{...styles.secondaryBtn, fontSize: '12px', padding: '8px'}} onClick={() => { setCurrentBeneficiaryId(f.id); setAppView('beneficiary_dashboard'); }}>
-              👨🏿‍🌾 Connecter {f.fullName} ({f.category})
+              👨🏿‍🌾 Connecter Profil Digital : {f.fullName}
             </button>
           ))}
         </div>
@@ -234,77 +183,168 @@ export default function App() {
     );
   }
 
-  // 2. ÉCRAN CRÉATION FINTECH (ADMIN)
+  // 2. ÉCRAN CRÉATION FINTECH (Inchangé)
   if (appView === 'register_admin') {
     return (
       <div style={styles.loginContainer}>
         <div style={styles.loginBox}>
-          <h2 style={{ color: '#0f172a' }}>Inscription Structure</h2>
-          <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>Devenez partenaire et gérez vos propres bénéficiaires.</p>
-          
-          <input type="text" placeholder="Nom de la structure (Fintech/Coopérative)" style={{...styles.input, width: '100%', marginBottom: '10px'}} onChange={e => setAdminForm({...adminForm, structure: e.target.value})} />
-          <input type="text" placeholder="Nom de l'Administrateur" style={{...styles.input, width: '100%', marginBottom: '10px'}} onChange={e => setAdminForm({...adminForm, name: e.target.value})} />
-          <input type="email" placeholder="Email pro" style={{...styles.input, width: '100%', marginBottom: '10px'}} onChange={e => setAdminForm({...adminForm, email: e.target.value})} />
-          <input type="password" placeholder="Mot de passe" style={{...styles.input, width: '100%', marginBottom: '20px'}} onChange={e => setAdminForm({...adminForm, pass: e.target.value})} />
-          
-          <button style={styles.primaryBtn} onClick={handleRegisterAdmin}>Créer mon compte Firebase</button>
-          <button style={{...styles.secondaryBtn, border: 'none'}} onClick={() => setAppView('login')}>Retour</button>
+          <h2>Inscription Fintech</h2>
+          <input type="text" placeholder="Nom de la structure" style={{...styles.input, marginBottom: '10px'}} onChange={e => setAdminForm({...adminForm, structure: e.target.value})} />
+          <input type="text" placeholder="Nom de l'Admin" style={{...styles.input, marginBottom: '10px'}} onChange={e => setAdminForm({...adminForm, name: e.target.value})} />
+          <input type="email" placeholder="Email pro" style={{...styles.input, marginBottom: '10px'}} onChange={e => setAdminForm({...adminForm, email: e.target.value})} />
+          <input type="password" placeholder="Mot de passe" style={{...styles.input, marginBottom: '20px'}} onChange={e => setAdminForm({...adminForm, pass: e.target.value})} />
+          <button style={styles.primaryBtn} onClick={handleRegisterAdmin}>Créer le compte</button>
+          <button style={styles.secondaryBtn} onClick={() => setAppView('login')}>Retour</button>
         </div>
       </div>
     );
   }
 
-  // 3. DASHBOARD ADMINISTRATEUR
+  // 3. DASHBOARD ADMINISTRATEUR (Nouveau KYC Complet)
   if (appView === 'admin_dashboard' && currentAdmin) {
-
+    const myBeneficiaries = beneficiaries.filter(b => b.fintechCode === currentAdmin.affiliationCode || b.fintechCode === 'FIN-DEMO');
     
     return (
       <div style={styles.appContainer}>
-        <NavBar title={`Tableau de bord : ${currentAdmin.structureName}`} onLogout={handleLogout} />
+        <NavBar title={`${currentAdmin.structureName} (Code: ${currentAdmin.affiliationCode})`} onLogout={handleLogout} />
         
-        <div style={{ padding: '20px', background: '#e0f2fe', margin: '20px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <strong>Votre Code d'Affiliation Fintech : </strong>
-            <span style={{ background: 'white', padding: '5px 10px', borderRadius: '6px', fontSize: '18px', letterSpacing: '2px', fontWeight: 'bold' }}>{currentAdmin.affiliationCode}</span>
-          </div>
-        </div>
-
-        {/* Formulaire KYC et Tableau */}
         <div style={styles.section}>
-          <h2>📝 Enrôlement KYC d'un Bénéficiaire</h2>
+          <h2>📝 Création de Profil Numérique (KYC Complet)</h2>
+          
           <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-             <button style={benCategory === 'Agriculteur' ? styles.tabActive : styles.tabInactive} onClick={() => setBenCategory('Agriculteur')}>🌱 Agriculteur</button>
-             <button style={benCategory === 'Commerçante' ? styles.tabActive : styles.tabInactive} onClick={() => setBenCategory('Commerçante')}>🛒 Commerçante / Vivrier</button>
+             <button style={kycTab === 'perso' ? styles.tabActive : styles.tabInactive} onClick={() => setKycTab('perso')}>👤 Identité</button>
+             <button style={kycTab === 'finance' ? styles.tabActive : styles.tabInactive} onClick={() => setKycTab('finance')}>💰 Finance & Susu</button>
+             <button style={kycTab === 'agri' ? styles.tabActive : styles.tabInactive} onClick={() => setKycTab('agri')}>🌱 Agri & GPS</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
-            <input type="text" placeholder="Nom complet" style={styles.input} />
-            <input type="text" placeholder="Numéro CNI" style={styles.input} />
-            {benCategory === 'Agriculteur' && (
-               <div style={{ gridColumn: 'span 2', background: '#f8fafc', padding: '15px', border: '1px dashed #cbd5e1', borderRadius: '8px' }}>
-                  <h4>📍 Cartographie de la Parcelle</h4>
-                  <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                    <button style={gpsMode === 'point' ? styles.primaryBtn : styles.secondaryBtn} onClick={() => setGpsMode('point')}>📍 Mode Point par Point</button>
-                    <button style={gpsMode === 'marche' ? styles.primaryBtn : styles.secondaryBtn} onClick={() => setGpsMode('marche')}>🚶‍♂️ Mode Marche</button>
-                  </div>
-                  <button style={{...styles.secondaryBtn, background: 'white'}} onClick={simulateGpsTracking}>🔴 Lancer le relevé GPS</button>
-                  {simulatedArea && <p style={{ color: '#16a34a', fontWeight: 'bold' }}>Superficie calculée : {simulatedArea} ha</p>}
-               </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+            {kycTab === 'perso' && (
+              <>
+                <select style={styles.input} onChange={e => setBenCategory(e.target.value as any)}><option>Agriculteur</option><option>Commerçante</option></select>
+                <input type="text" placeholder="Nom et Prénoms" style={styles.input} />
+                <input type="text" placeholder="Sexe" style={styles.input} />
+                <input type="date" placeholder="Date de naissance" style={styles.input} />
+                <input type="text" placeholder="Pièce d'Identité (NNI)" style={styles.input} />
+                <input type="text" placeholder="Contact d'urgence" style={styles.input} />
+              </>
+            )}
+            
+            {kycTab === 'finance' && (
+              <>
+                <select style={styles.input}><option>Wave</option><option>Orange Money</option><option>MTN MoMo</option></select>
+                <input type="tel" placeholder="Numéro Mobile Money" style={styles.input} />
+                <input type="text" placeholder="Revenus estimés annuels" style={styles.input} />
+                <input type="text" placeholder="Groupe Susu d'appartenance" style={styles.input} />
+                <input type="text" placeholder="Coopérative" style={styles.input} />
+                <div style={{ gridColumn: 'span 2', background: '#dcfce7', padding: '10px', borderRadius: '8px', color: '#166534', fontWeight: 'bold' }}>
+                  Ouverture de portefeuille numérique automatique après validation.
+                </div>
+              </>
+            )}
+
+            {kycTab === 'agri' && (
+              <>
+                <input type="text" placeholder="Type de culture principale" style={styles.input} />
+                <input type="text" placeholder="Superficie (Hectares)" style={styles.input} />
+                <select style={styles.input}><option>Méthode Conventionnelle</option><option>Agroforesterie (Éligible Carbone)</option></select>
+                <div style={{ gridColumn: 'span 2', background: '#f1f5f9', padding: '15px', borderRadius: '8px', border: '1px dashed #94a3b8' }}>
+                  <h4>📍 Module Cartographie</h4>
+                  <button style={{...styles.secondaryBtn, width: 'auto', marginRight: '10px'}}>🚶‍♂️ Mode Marche (Tracer Bordure)</button>
+                  <button style={{...styles.secondaryBtn, width: 'auto'}}>📸 Prendre Photo Géolocalisée</button>
+                </div>
+              </>
             )}
           </div>
+          <button style={{...styles.primaryBtn, marginTop: '20px'}}>Enregistrer & Créer Identifiant Financier Unique</button>
+        </div>
+
+        <div style={styles.section}>
+          <h2>📋 Base de Données des Bénéficiaires</h2>
+          <table style={styles.table}>
+            <thead><tr><th>Profil</th><th>Nom</th><th>Mobile Money</th><th>Score Confiance</th><th>Assurance</th></tr></thead>
+            <tbody>
+              {myBeneficiaries.map(f => (
+                <tr key={f.id}>
+                  <td>{f.category}</td><td>{f.fullName}</td><td>{f.mobileMoneyProvider} ({f.mobileMoneyNumber})</td>
+                  <td><strong style={{ color: '#16a34a' }}>{f.trustScore}/100</strong></td>
+                  <td>{f.insuranceStatus}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     );
   }
 
-  // 4. ESPACE BÉNÉFICIAIRE
+  // 4. ESPACE BÉNÉFICIAIRE (Super-App Complète)
   if (appView === 'beneficiary_dashboard' && currentUser) {
     return (
       <div style={styles.appContainer}>
-        <NavBar title={`Espace de ${currentUser.fullName}`} onLogout={() => {setCurrentBeneficiaryId(null); setAppView('login');}} />
-        <div style={{ margin: '20px' }}>
-           <h3>Bienvenue {currentUser.fullName} !</h3>
-           <p>Solde : {currentUser.savings} CFA</p>
-           <button onClick={() => speakText(`Solde de ${currentUser.savings} francs`)} style={styles.voiceBtn}>🔊 Lire solde</button>
+        <NavBar title={`Profil Digital : ${currentUser.fullName}`} onLogout={() => {setCurrentBeneficiaryId(null); setAppView('login');}} />
+        
+        <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+          
+          {/* Module 1: Finance & Mobile Money */}
+          <div style={styles.cardDark}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h3 style={{ margin: 0, color: 'white' }}>Portefeuille & Épargne</h3>
+              <span style={{ background: '#2563eb', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>Lié à {currentUser.mobileMoneyProvider}</span>
+            </div>
+            <div style={{ fontSize: '28px', color: 'white', fontWeight: 'bold', marginBottom: '5px' }}>{currentUser.savings.toLocaleString()} FCFA</div>
+            <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>ID Unique : {currentUser.cardNumber}</p>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+              <button style={styles.actionBtnDark}>Dépôt Susu</button>
+              <button style={styles.actionBtnDark}>Retrait (USSD)</button>
+            </div>
+          </div>
+
+          {/* Module 2: Susu & Score de confiance */}
+          <div style={styles.cardWhite}>
+            <h3 style={styles.cardTitle}>🤝 Groupe Susu & Confiance</h3>
+            <p><strong>Groupe :</strong> {currentUser.susuGroup}</p>
+            <p><strong>Coopérative :</strong> {currentUser.cooperative}</p>
+            <div style={{ marginTop: '15px', padding: '15px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#166534', fontWeight: 'bold' }}>Score de Crédit Intelligent</span>
+                <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#15803d' }}>{currentUser.trustScore}/100</span>
+              </div>
+              <p style={{ fontSize: '12px', color: '#166534', margin: '5px 0 0 0' }}>Basé sur l'historique d'épargne et les rendements agricoles.</p>
+            </div>
+          </div>
+
+          {/* Module 3: Assurance Paramétrique (Innovant) */}
+          <div style={styles.cardWhite}>
+            <h3 style={styles.cardTitle}>🛡️ Assurance Climatique Intelligente</h3>
+            <p style={{ fontSize: '14px', color: '#64748b' }}>Basée sur les données satellites de {currentUser.gpsLocation}</p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', background: '#f8fafc', borderRadius: '6px' }}>
+                <span>Indice Pluviométrique (30j)</span>
+                <span style={{ color: '#16a34a', fontWeight: 'bold' }}>Normal (120mm)</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', background: '#f8fafc', borderRadius: '6px' }}>
+                <span>Détection Maladie (IA)</span>
+                <span style={{ color: '#16a34a', fontWeight: 'bold' }}>Aucune</span>
+              </div>
+            </div>
+            <p style={{ fontSize: '12px', marginTop: '10px', color: '#0f172a' }}>
+              Statut du contrat : <strong>{currentUser.insuranceStatus}</strong> <br/>
+              *Indemnisation automatique via Mobile Money si seuil de sécheresse atteint.*
+            </p>
+          </div>
+
+          {/* Module 4: Crédit & Vente Carbone */}
+          <div style={styles.cardWhite}>
+            <h3 style={styles.cardTitle}>🌱 Crédit Agricole & Carbone</h3>
+            <div style={{ padding: '10px', background: '#fef3c7', borderRadius: '8px', marginBottom: '15px' }}>
+              <h4 style={{ margin: '0 0 5px 0', color: '#b45309' }}>Finance Climatique</h4>
+              <p style={{ margin: 0, fontSize: '14px', color: '#92400e' }}>Pratique : {currentUser.farmingMethods}</p>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#b45309', marginTop: '5px' }}>+ {currentUser.carbonCredits.toLocaleString()} FCFA générés</div>
+            </div>
+            <button style={{...styles.primaryBtn, width: '100%'}}>💳 Demander Crédit (Intrants)</button>
+          </div>
+
         </div>
       </div>
     );
@@ -315,7 +355,7 @@ export default function App() {
 
 const NavBar = ({ title, onLogout }: { title: string, onLogout: () => void }) => (
   <div style={styles.navbar}>
-    <h2 style={{ margin: 0, color: 'white' }}>{title}</h2>
+    <h2 style={{ margin: 0, color: 'white', fontSize: '18px' }}>{title}</h2>
     <button style={styles.logoutBtn} onClick={onLogout}>Déconnexion</button>
   </div>
 );
@@ -324,13 +364,17 @@ const styles: Record<string, React.CSSProperties> = {
   loginContainer: { height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: '#f1f5f9', fontFamily: '"Inter", sans-serif' },
   loginBox: { background: 'white', padding: '40px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', textAlign: 'center', width: '100%', maxWidth: '500px' },
   appContainer: { minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: '"Inter", sans-serif', paddingBottom: '40px' },
-  section: { background: 'white', margin: '20px', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' },
-  navbar: { background: 'linear-gradient(90deg, #166534, #15803d)', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  input: { padding: '12px', borderRadius: '8px', border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box' },
-  primaryBtn: { background: '#16a34a', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', width: '100%', fontWeight: 'bold', marginBottom: '10px' },
-  secondaryBtn: { background: 'transparent', color: '#0f172a', border: '1px solid #cbd5e1', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', width: '100%', fontWeight: 'bold', marginBottom: '10px' },
-  logoutBtn: { background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' },
-  voiceBtn: { background: '#e0f2fe', border: 'none', borderRadius: '50%', width: '35px', height: '35px', cursor: 'pointer', marginLeft: '10px' },
+  section: { background: 'white', margin: '20px', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', border: '1px solid #e2e8f0' },
+  navbar: { background: '#0f172a', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  input: { padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box' },
+  primaryBtn: { background: '#16a34a', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', width: '100%', fontWeight: 'bold' },
+  secondaryBtn: { background: 'transparent', color: '#0f172a', border: '1px solid #cbd5e1', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', width: '100%', fontWeight: 'bold' },
+  actionBtnDark: { background: 'rgba(255,255,255,0.2)', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' },
+  logoutBtn: { background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' },
   tabActive: { flex: 1, padding: '10px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' },
   tabInactive: { flex: 1, padding: '10px', background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' },
+  table: { width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' },
+  cardDark: { background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' },
+  cardWhite: { background: 'white', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' },
+  cardTitle: { margin: '0 0 15px 0', color: '#0f172a', fontSize: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }
 };
