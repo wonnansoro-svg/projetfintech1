@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 
-// 1. IMPORTS FIREBASE (Intacts et fonctionnels)
+// 1. IMPORTS FIREBASE
 import { initializeApp } from "firebase/app";
 import { 
   getAuth, 
@@ -25,15 +25,13 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
 // ============================================================================
-// TYPES DE DONNÉES (Basés sur votre cahier des charges complet)
+// TYPES DE DONNÉES
 // ============================================================================
 
 interface Beneficiary {
   id: string;
   fintechCode: string;
   category: 'Agriculteur' | 'Commerçante' | 'Transporteur';
-  
-  // 1. Informations Personnelles
   fullName: string;
   gender: string;
   dob: string;
@@ -41,28 +39,20 @@ interface Beneficiary {
   idCardNumber: string;
   emergencyContact: string;
   language: string;
-
-  // 2. Informations Financières & Mobile Money
   estimatedIncome: string;
   mobileMoneyProvider: 'Orange Money' | 'MTN' | 'Wave' | 'Moov';
   mobileMoneyNumber: string;
   riskLevel: 'Faible' | 'Moyen' | 'Élevé';
   savings: number;
-  cardNumber: string; // Portefeuille AgroSusu
-
-  // 3. Informations Agricoles & GPS
-  activity: string; // Type de culture ou commerce
+  cardNumber: string; 
+  activity: string; 
   areaHectares: string;
   season: string;
   farmingMethods: string;
   gpsLocation: string;
-
-  // 4. Données Sociales & Susu
   cooperative: string;
   susuGroup: string;
-  trustScore: number; // /100
-
-  // 5. Assurance, Carbone & Crédit
+  trustScore: number; 
   insuranceStatus: 'Actif' | 'En attente' | 'Sinistré';
   carbonCredits: number;
   loanStatus: 'Éligible' | 'En cours' | 'Non éligible';
@@ -77,7 +67,6 @@ interface FintechAdmin {
   affiliationCode: string;
 }
 
-// Données enrichies de démonstration
 const initialBeneficiaries: Beneficiary[] = [
   {
     id: '1', fintechCode: 'FIN-DEMO', category: 'Agriculteur',
@@ -106,7 +95,6 @@ export default function App() {
   const [adminForm, setAdminForm] = useState({ structure: '', name: '', email: '', pass: '' });
   const [loginForm, setLoginForm] = useState({ email: '', pass: '' });
   
-  // États du nouveau formulaire KYC
   const [kycTab, setKycTab] = useState<'perso' | 'finance' | 'agri'>('perso');
   const [benCategory, setBenCategory] = useState<'Agriculteur' | 'Commerçante'>('Agriculteur');
 
@@ -155,7 +143,6 @@ export default function App() {
   // VUES (ÉCRANS)
   // ============================================================================
 
-  // 1. ÉCRAN DE CONNEXION INITIAL (Inchangé)
   if (appView === 'login') {
     return (
       <div style={styles.loginContainer}>
@@ -183,7 +170,6 @@ export default function App() {
     );
   }
 
-  // 2. ÉCRAN CRÉATION FINTECH (Inchangé)
   if (appView === 'register_admin') {
     return (
       <div style={styles.loginContainer}>
@@ -200,7 +186,6 @@ export default function App() {
     );
   }
 
-  // 3. DASHBOARD ADMINISTRATEUR (Nouveau KYC Complet)
   if (appView === 'admin_dashboard' && currentAdmin) {
     const myBeneficiaries = beneficiaries.filter(b => b.fintechCode === currentAdmin.affiliationCode || b.fintechCode === 'FIN-DEMO');
     
@@ -220,7 +205,10 @@ export default function App() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
             {kycTab === 'perso' && (
               <>
-                <select style={styles.input} onChange={e => setBenCategory(e.target.value as any)}><option>Agriculteur</option><option>Commerçante</option></select>
+                <select style={styles.input} value={benCategory} onChange={e => setBenCategory(e.target.value as any)}>
+                  <option value="Agriculteur">Agriculteur</option>
+                  <option value="Commerçante">Commerçante</option>
+                </select>
                 <input type="text" placeholder="Nom et Prénoms" style={styles.input} />
                 <input type="text" placeholder="Sexe" style={styles.input} />
                 <input type="date" placeholder="Date de naissance" style={styles.input} />
@@ -244,8 +232,12 @@ export default function App() {
 
             {kycTab === 'agri' && (
               <>
-                <input type="text" placeholder="Type de culture principale" style={styles.input} />
-                <input type="text" placeholder="Superficie (Hectares)" style={styles.input} />
+                <input type="text" placeholder={benCategory === 'Agriculteur' ? "Type de culture principale" : "Type de marchandise"} style={styles.input} />
+                
+                {benCategory === 'Agriculteur' && (
+                   <input type="text" placeholder="Superficie (Hectares)" style={styles.input} />
+                )}
+                
                 <select style={styles.input}><option>Méthode Conventionnelle</option><option>Agroforesterie (Éligible Carbone)</option></select>
                 <div style={{ gridColumn: 'span 2', background: '#f1f5f9', padding: '15px', borderRadius: '8px', border: '1px dashed #94a3b8' }}>
                   <h4>📍 Module Cartographie</h4>
@@ -277,7 +269,6 @@ export default function App() {
     );
   }
 
-  // 4. ESPACE BÉNÉFICIAIRE (Super-App Complète)
   if (appView === 'beneficiary_dashboard' && currentUser) {
     return (
       <div style={styles.appContainer}>
@@ -285,11 +276,10 @@ export default function App() {
         
         <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
           
-          {/* Module 1: Finance & Mobile Money */}
           <div style={styles.cardDark}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
               <h3 style={{ margin: 0, color: 'white' }}>Portefeuille & Épargne</h3>
-              <span style={{ background: '#2563eb', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>Lié à {currentUser.mobileMoneyProvider}</span>
+              <span style={{ background: '#2563eb', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', color:'white' }}>Lié à {currentUser.mobileMoneyProvider}</span>
             </div>
             <div style={{ fontSize: '28px', color: 'white', fontWeight: 'bold', marginBottom: '5px' }}>{currentUser.savings.toLocaleString()} FCFA</div>
             <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>ID Unique : {currentUser.cardNumber}</p>
@@ -299,7 +289,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Module 2: Susu & Score de confiance */}
           <div style={styles.cardWhite}>
             <h3 style={styles.cardTitle}>🤝 Groupe Susu & Confiance</h3>
             <p><strong>Groupe :</strong> {currentUser.susuGroup}</p>
@@ -313,9 +302,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Module 3: Assurance Paramétrique (Innovant) */}
           <div style={styles.cardWhite}>
-            <h3 style={styles.cardTitle}>🛡️ Assurance Climatique Intelligente</h3>
+            <h3 style={styles.cardTitle}>🛡️ Assurance Climatique</h3>
             <p style={{ fontSize: '14px', color: '#64748b' }}>Basée sur les données satellites de {currentUser.gpsLocation}</p>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
@@ -330,11 +318,10 @@ export default function App() {
             </div>
             <p style={{ fontSize: '12px', marginTop: '10px', color: '#0f172a' }}>
               Statut du contrat : <strong>{currentUser.insuranceStatus}</strong> <br/>
-              *Indemnisation automatique via Mobile Money si seuil de sécheresse atteint.*
+              *Indemnisation automatique via Mobile Money si seuil atteint.*
             </p>
           </div>
 
-          {/* Module 4: Crédit & Vente Carbone */}
           <div style={styles.cardWhite}>
             <h3 style={styles.cardTitle}>🌱 Crédit Agricole & Carbone</h3>
             <div style={{ padding: '10px', background: '#fef3c7', borderRadius: '8px', marginBottom: '15px' }}>
