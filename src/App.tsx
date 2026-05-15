@@ -1,20 +1,10 @@
 import React, { useMemo, useState, useEffect } from 'react';
 
-// ============================================================================
-// 🔧 ZONE D'INTÉGRATION DES API (À DÉVELOPPER PLUS TARD)
-// ============================================================================
-
-const apiService = {
-  // 1. FIREBASE (Authentification & Base de données)
-  // npm install firebase
-  // Import the functions you need from the SDKs you need
+// 1. LES IMPORTS FIREBASE DOIVENT ÊTRE TOUT EN HAUT
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// 2. CONFIGURATION FIREBASE (En dehors de l'objet apiService)
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: "fintech-f4dee.firebaseapp.com",
@@ -24,40 +14,43 @@ const firebaseConfig = {
   appId: "1:683189698437:web:4660db484bd377a1298eec",
   measurementId: "G-NSF5PPM5KJ"
 };
-// Initialize Firebase
+
+// Initialisation de Firebase
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 
+
+// ============================================================================
+// 🔧 ZONE D'INTÉGRATION DES API
+// ============================================================================
+
+const apiService = {
+  // FIREBASE (Authentification)
   loginAdminFirebase: async (email: string, pass: string) => {
     // TODO: const userCredential = await signInWithEmailAndPassword(auth, email, pass);
     console.log("Firebase Auth simulé pour:", email);
   },
   
-  // 2. MÉTÉO (ex: OpenWeatherMap, Tahmo)
+  // MÉTÉO
   getWeatherForParcel: async (lat: number, lng: number) => {
-    // TODO: fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&appid=VOTRE_API_KEY`)
     console.log(`Météo récupérée pour GPS: ${lat}, ${lng}`);
   },
 
-  // 3. NDVI (Santé de la parcelle par Satellite, ex: Sentinel Hub, Agromonitoring)
+  // NDVI
   getNDVIHealth: async (polygonGeoJSON: any) => {
-    // TODO: fetch API NDVI avec le polygone de la parcelle
     console.log("Analyse NDVI simulée : La parcelle est en bonne santé (Indice: 0.65)");
     return "Bonne santé (0.65)";
   },
 
-  // 4. LEAFLET (Calcul de superficie avec Turf.js)
-  // npm install react-leaflet leaflet @turf/turf
+  // LEAFLET
   calculateArea: (points: any[]) => {
-    // TODO: utiliser turf.area(turf.polygon([points])) pour avoir la superficie exacte
-    return (Math.random() * 5 + 0.5).toFixed(2); // Simulation en Hectares
+    return (Math.random() * 5 + 0.5).toFixed(2); 
   }
 };
 
 // ============================================================================
-// TYPES DE DONNÉES
+// TYPES DE DONNÉES (La suite de votre code reste identique en bas...)
 // ============================================================================
-
 interface Beneficiary {
   id: string;
   fintechCode: string; // Lien avec la Fintech
