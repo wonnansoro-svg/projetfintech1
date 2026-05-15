@@ -1,16 +1,4 @@
-import { useMemo, useState } from 'react';
-import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  Alert,
-  FlatList,
-} from 'react-native';
+import { useMemo, useState } from "react";
 
 interface Farmer {
   id: string;
@@ -32,58 +20,67 @@ interface ClimateAlert {
 
 const initialFarmers: Farmer[] = [
   {
-    id: '1',
-    fullName: 'Kouassi Adjoua',
-    phone: '+2250700000001',
-    activity: 'Culture du cacao',
-    village: 'Yamoussoukro',
+    id: "1",
+    fullName: "Kouassi Adjoua",
+    phone: "+2250700000001",
+    activity: "Culture du cacao",
+    village: "Yamoussoukro",
     savings: 125000,
-    insuranceStatus: 'Actif',
-    gpsLocation: '5.3480, -4.0270',
+    insuranceStatus: "Actif",
+    gpsLocation: "5.3480, -4.0270",
   },
   {
-    id: '2',
-    fullName: 'Traoré Mamadou',
-    phone: '+2250700000002',
-    activity: 'Commerce de riz',
-    village: 'Bouaké',
+    id: "2",
+    fullName: "Traoré Mamadou",
+    phone: "+2250700000002",
+    activity: "Commerce de riz",
+    village: "Bouaké",
     savings: 98000,
-    insuranceStatus: 'En attente',
-    gpsLocation: '7.6938, -5.0303',
+    insuranceStatus: "En attente",
+    gpsLocation: "7.6938, -5.0303",
   },
 ];
 
 const climateAlerts: ClimateAlert[] = [
   {
-    id: '1',
-    title: 'Alerte Sécheresse',
-    description: 'Faible niveau de pluie détecté pendant 21 jours.',
-    severity: 'Élevé',
+    id: "1",
+    title: "Alerte Sécheresse",
+    description: "Faible niveau de pluie détecté pendant 21 jours.",
+    severity: "Élevé",
   },
   {
-    id: '2',
-    title: 'Risque d’inondation',
-    description: 'Précipitations importantes prévues cette semaine.',
-    severity: 'Moyen',
+    id: "2",
+    title: "Risque d’inondation",
+    description: "Précipitations importantes prévues cette semaine.",
+    severity: "Moyen",
   },
 ];
 
 export default function App() {
-  const [farmers, setFarmers] = useState<Farmer[]>(initialFarmers);
+  const [farmers, setFarmers] =
+    useState<Farmer[]>(initialFarmers);
 
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [activity, setActivity] = useState('');
-  const [village, setVillage] = useState('');
-  const [gpsLocation, setGpsLocation] = useState('');
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [activity, setActivity] = useState("");
+  const [village, setVillage] = useState("");
+  const [gpsLocation, setGpsLocation] = useState("");
 
   const totalSavings = useMemo(() => {
-    return farmers.reduce((acc, item) => acc + item.savings, 0);
+    return farmers.reduce(
+      (acc, item) => acc + item.savings,
+      0
+    );
   }, [farmers]);
 
   const registerFarmer = () => {
-    if (!fullName || !phone || !activity || !village) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires.');
+    if (
+      !fullName ||
+      !phone ||
+      !activity ||
+      !village
+    ) {
+      alert("Veuillez remplir tous les champs.");
       return;
     }
 
@@ -94,26 +91,26 @@ export default function App() {
       activity,
       village,
       savings: 0,
-      insuranceStatus: 'Actif',
+      insuranceStatus: "Actif",
       gpsLocation,
     };
 
-    setFarmers((prev) => [newFarmer, ...prev]);
+    setFarmers((prev: Farmer[]) => [
+      newFarmer,
+      ...prev,
+    ]);
 
-    setFullName('');
-    setPhone('');
-    setActivity('');
-    setVillage('');
-    setGpsLocation('');
+    setFullName("");
+    setPhone("");
+    setActivity("");
+    setVillage("");
+    setGpsLocation("");
 
-    Alert.alert(
-      'Succès',
-      'Le bénéficiaire a été enregistré avec succès.'
-    );
+    alert("Bénéficiaire enregistré.");
   };
 
   const collectContribution = (farmerId: string) => {
-    const updated = farmers.map((farmer) => {
+    const updated = farmers.map((farmer: Farmer) => {
       if (farmer.id === farmerId) {
         return {
           ...farmer,
@@ -126,322 +123,284 @@ export default function App() {
 
     setFarmers(updated);
 
-    Alert.alert(
-      'Cotisation enregistrée',
-      'Une cotisation de 5 000 FCFA a été ajoutée.'
-    );
+    alert("Cotisation ajoutée.");
   };
 
-  const insurancePayment = (farmerName: string) => {
-    Alert.alert(
-      'Paiement Assurance',
-      `Le remboursement climatique a été initié pour ${farmerName}.`
+  const insurancePayment = (name: string) => {
+    alert(
+      `Paiement assurance effectué pour ${name}`
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <div
+      style={{
+        minHeight: "100vh",
+        backgroundColor: "#0F172A",
+        color: "white",
+        fontFamily: "Arial",
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: "#14532D",
+          padding: 20,
+          borderBottomLeftRadius: 20,
+          borderBottomRightRadius: 20,
+        }}
+      >
+        <h1>AGROSUSU</h1>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <Text style={styles.logo}>AGROSUSU</Text>
-          <Text style={styles.subtitle}>
-            Fintech Agricole • Assurance Climatique • Épargne Collective
-          </Text>
-        </View>
+        <p>
+          Fintech Agricole • Assurance Climatique
+          • Épargne Collective
+        </p>
+      </div>
 
-        <View style={styles.dashboardContainer}>
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Bénéficiaires</Text>
-            <Text style={styles.bigValue}>{farmers.length}</Text>
-          </View>
+      <div
+        style={{
+          display: "flex",
+          gap: 20,
+          padding: 20,
+          flexWrap: "wrap",
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: "#1E293B",
+            padding: 20,
+            borderRadius: 16,
+            flex: 1,
+          }}
+        >
+          <h3>Bénéficiaires</h3>
+          <h1>{farmers.length}</h1>
+        </div>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Épargne Totale</Text>
-            <Text style={styles.bigValue}>
-              {totalSavings.toLocaleString()} FCFA
-            </Text>
-          </View>
-        </View>
+        <div
+          style={{
+            backgroundColor: "#1E293B",
+            padding: 20,
+            borderRadius: 16,
+            flex: 1,
+          }}
+        >
+          <h3>Épargne Totale</h3>
+          <h1>
+            {totalSavings.toLocaleString()} FCFA
+          </h1>
+        </div>
+      </div>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            Enregistrement Bénéficiaire
-          </Text>
+      <div
+        style={{
+          backgroundColor: "#1E293B",
+          margin: 20,
+          padding: 20,
+          borderRadius: 20,
+        }}
+      >
+        <h2>Enregistrement Bénéficiaire</h2>
 
-          <TextInput
-            placeholder="Nom complet"
-            placeholderTextColor="#7a7a7a"
-            style={styles.input}
-            value={fullName}
-            onChangeText={setFullName}
-          />
+        <input
+          placeholder="Nom complet"
+          value={fullName}
+          onChange={(e) =>
+            setFullName(e.target.value)
+          }
+          style={inputStyle}
+        />
 
-          <TextInput
-            placeholder="Téléphone"
-            placeholderTextColor="#7a7a7a"
-            keyboardType="phone-pad"
-            style={styles.input}
-            value={phone}
-            onChangeText={setPhone}
-          />
+        <input
+          placeholder="Téléphone"
+          value={phone}
+          onChange={(e) =>
+            setPhone(e.target.value)
+          }
+          style={inputStyle}
+        />
 
-          <TextInput
-            placeholder="Activité agricole ou commerciale"
-            placeholderTextColor="#7a7a7a"
-            style={styles.input}
-            value={activity}
-            onChangeText={setActivity}
-          />
+        <input
+          placeholder="Activité"
+          value={activity}
+          onChange={(e) =>
+            setActivity(e.target.value)
+          }
+          style={inputStyle}
+        />
 
-          <TextInput
-            placeholder="Village / Région"
-            placeholderTextColor="#7a7a7a"
-            style={styles.input}
-            value={village}
-            onChangeText={setVillage}
-          />
+        <input
+          placeholder="Village"
+          value={village}
+          onChange={(e) =>
+            setVillage(e.target.value)
+          }
+          style={inputStyle}
+        />
 
-          <TextInput
-            placeholder="Coordonnées GPS"
-            placeholderTextColor="#7a7a7a"
-            style={styles.input}
-            value={gpsLocation}
-            onChangeText={setGpsLocation}
-          />
+        <input
+          placeholder="Coordonnées GPS"
+          value={gpsLocation}
+          onChange={(e) =>
+            setGpsLocation(e.target.value)
+          }
+          style={inputStyle}
+        />
 
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={registerFarmer}
+        <button
+          onClick={registerFarmer}
+          style={primaryButton}
+        >
+          Créer un compte
+        </button>
+      </div>
+
+      <div
+        style={{
+          backgroundColor: "#1E293B",
+          margin: 20,
+          padding: 20,
+          borderRadius: 20,
+        }}
+      >
+        <h2>Alertes Climatiques</h2>
+
+        {climateAlerts.map((alert) => (
+          <div
+            key={alert.id}
+            style={{
+              backgroundColor: "#7F1D1D",
+              padding: 15,
+              borderRadius: 12,
+              marginBottom: 10,
+            }}
           >
-            <Text style={styles.buttonText}>Créer un compte</Text>
-          </TouchableOpacity>
-        </View>
+            <h3>{alert.title}</h3>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Alertes Climatiques</Text>
+            <p>{alert.description}</p>
 
-          {climateAlerts.map((alert) => (
-            <View key={alert.id} style={styles.alertCard}>
-              <Text style={styles.alertTitle}>{alert.title}</Text>
-              <Text style={styles.alertDescription}>
-                {alert.description}
-              </Text>
-              <Text style={styles.alertSeverity}>
-                Niveau : {alert.severity}
-              </Text>
-            </View>
-          ))}
-        </View>
+            <strong>
+              Niveau : {alert.severity}
+            </strong>
+          </div>
+        ))}
+      </div>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Liste des Bénéficiaires</Text>
+      <div
+        style={{
+          backgroundColor: "#1E293B",
+          margin: 20,
+          padding: 20,
+          borderRadius: 20,
+        }}
+      >
+        <h2>Liste des Bénéficiaires</h2>
 
-          <FlatList
-            data={farmers}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            renderItem={({ item }) => (
-              <View style={styles.farmerCard}>
-                <Text style={styles.farmerName}>{item.fullName}</Text>
+        {farmers.map((item: Farmer) => (
+          <div
+            key={item.id}
+            style={{
+              backgroundColor: "#334155",
+              padding: 20,
+              borderRadius: 16,
+              marginBottom: 16,
+            }}
+          >
+            <h3>{item.fullName}</h3>
 
-                <Text style={styles.infoText}>
-                  Téléphone : {item.phone}
-                </Text>
+            <p>Téléphone : {item.phone}</p>
 
-                <Text style={styles.infoText}>
-                  Activité : {item.activity}
-                </Text>
+            <p>Activité : {item.activity}</p>
 
-                <Text style={styles.infoText}>
-                  Localité : {item.village}
-                </Text>
+            <p>Village : {item.village}</p>
 
-                <Text style={styles.infoText}>
-                  GPS : {item.gpsLocation || 'Non disponible'}
-                </Text>
+            <p>
+              GPS :{" "}
+              {item.gpsLocation ||
+                "Non disponible"}
+            </p>
 
-                <Text style={styles.infoText}>
-                  Assurance : {item.insuranceStatus}
-                </Text>
+            <p>
+              Assurance :{" "}
+              {item.insuranceStatus}
+            </p>
 
-                <Text style={styles.savingsText}>
-                  Épargne : {item.savings.toLocaleString()} FCFA
-                </Text>
+            <h4>
+              Épargne :{" "}
+              {item.savings.toLocaleString()} FCFA
+            </h4>
 
-                <View style={styles.actionContainer}>
-                  <TouchableOpacity
-                    style={styles.secondaryButton}
-                    onPress={() => collectContribution(item.id)}
-                  >
-                    <Text style={styles.buttonText}>Cotisation</Text>
-                  </TouchableOpacity>
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                style={secondaryButton}
+                onClick={() =>
+                  collectContribution(item.id)
+                }
+              >
+                Cotisation
+              </button>
 
-                  <TouchableOpacity
-                    style={styles.insuranceButton}
-                    onPress={() => insurancePayment(item.fullName)}
-                  >
-                    <Text style={styles.buttonText}>Assurance</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          />
-        </View>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            AgroSusu © 2026 - Inclusion Financière Agricole en Afrique
-            de l’Ouest
-          </Text>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+              <button
+                style={insuranceButton}
+                onClick={() =>
+                  insurancePayment(
+                    item.fullName
+                  )
+                }
+              >
+                Assurance
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  header: {
-    padding: 20,
-    backgroundColor: '#14532D',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  logo: {
-    color: '#FFFFFF',
-    fontSize: 30,
-    fontWeight: 'bold',
-  },
-  subtitle: {
-    color: '#D1FAE5',
-    marginTop: 8,
-    fontSize: 14,
-  },
-  dashboardContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  card: {
-    backgroundColor: '#1E293B',
-    width: '48%',
-    borderRadius: 16,
-    padding: 16,
-  },
-  cardTitle: {
-    color: '#CBD5E1',
-    fontSize: 14,
-  },
-  bigValue: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginTop: 10,
-  },
-  section: {
-    backgroundColor: '#1E293B',
-    marginHorizontal: 16,
-    marginBottom: 18,
-    borderRadius: 18,
-    padding: 16,
-  },
-  sectionTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  input: {
-    backgroundColor: '#334155',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    color: '#FFFFFF',
-    marginBottom: 12,
-  },
-  primaryButton: {
-    backgroundColor: '#16A34A',
-    padding: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  secondaryButton: {
-    backgroundColor: '#2563EB',
-    padding: 12,
-    borderRadius: 12,
-    flex: 1,
-    marginRight: 8,
-    alignItems: 'center',
-  },
-  insuranceButton: {
-    backgroundColor: '#DC2626',
-    padding: 12,
-    borderRadius: 12,
-    flex: 1,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-  },
-  alertCard: {
-    backgroundColor: '#7F1D1D',
-    padding: 14,
-    borderRadius: 14,
-    marginBottom: 12,
-  },
-  alertTitle: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  alertDescription: {
-    color: '#FECACA',
-    marginTop: 6,
-  },
-  alertSeverity: {
-    color: '#FFFFFF',
-    marginTop: 10,
-    fontWeight: '600',
-  },
-  farmerCard: {
-    backgroundColor: '#334155',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  farmerName: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  infoText: {
-    color: '#E2E8F0',
-    marginBottom: 6,
-  },
-  savingsText: {
-    color: '#86EFAC',
-    fontWeight: 'bold',
-    marginTop: 10,
-    marginBottom: 14,
-  },
-  actionContainer: {
-    flexDirection: 'row',
-  },
-  footer: {
-    alignItems: 'center',
-    padding: 20,
-    marginBottom: 30,
-  },
-  footerText: {
-    color: '#94A3B8',
-    textAlign: 'center',
-  },
-});
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: 14,
+  marginBottom: 12,
+  borderRadius: 10,
+  border: "none",
+  backgroundColor: "#334155",
+  color: "white",
+};
+
+const primaryButton: React.CSSProperties = {
+  backgroundColor: "#16A34A",
+  color: "white",
+  padding: 14,
+  border: "none",
+  borderRadius: 12,
+  cursor: "pointer",
+  width: "100%",
+  fontWeight: "bold",
+};
+
+const secondaryButton: React.CSSProperties = {
+  backgroundColor: "#2563EB",
+  color: "white",
+  padding: 12,
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
+
+const insuranceButton: React.CSSProperties = {
+  backgroundColor: "#DC2626",
+  color: "white",
+  padding: 12,
+  border: "none",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: "bold",
+};
