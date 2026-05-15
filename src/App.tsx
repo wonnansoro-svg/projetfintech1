@@ -19,7 +19,7 @@ const auth = getAuth(app);
 // TYPES
 // ============================================================================
 
-type BenCategory = 'Agriculteur' | 'Commerçante' | 'Transporteur';
+type BenCategory = 'Agriculteur' | 'Commerçante' | 'Transporteur' | 'biometric';
 type InsuranceStatus = 'Actif' | 'En attente' | 'Sinistré' | 'Remboursé';
 type LoanStatus = 'Éligible' | 'En cours' | 'Non éligible' | 'Remboursé';
 type RiskLevel = 'Faible' | 'Moyen' | 'Élevé';
@@ -1471,4 +1471,4 @@ const S: Record<string, React.CSSProperties> = {
   tabInactive: { flex: 1, padding: '9px 6px', background: 'transparent', color: '#94a3b8', border: 'none', borderRadius: '8px', fontWeight: '500', cursor: 'pointer', fontSize: '12px', fontFamily: 'inherit' },
   cardWhite: { background: 'white', padding: '18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.02)' },
   cardTitle: { margin: '0 0 14px', color: '#0f172a', fontSize: '15px', fontWeight: '700', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' },
-};
+};s
