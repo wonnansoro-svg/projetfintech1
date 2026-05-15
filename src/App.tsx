@@ -256,7 +256,7 @@ export default function App() {
 
   // 3. DASHBOARD ADMINISTRATEUR
   if (appView === 'admin_dashboard' && currentAdmin) {
-    const myBeneficiaries = beneficiaries.filter(b => b.fintechCode === currentAdmin.affiliationCode || b.fintechCode === 'FIN-DEMO');
+
     
     return (
       <div style={styles.appContainer}>
