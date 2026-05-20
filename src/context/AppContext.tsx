@@ -141,7 +141,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Charger météo et localisation au montage
   useEffect(() => {
-    getCurrentLocation().then((loc) => {
+    getCurrentLocation().then((loc: any) => {
       setCurrentLocation(loc);
       loadWeather(loc.lat, loc.lng);
     });
