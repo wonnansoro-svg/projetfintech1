@@ -3,7 +3,7 @@ import { Mail, Lock, Building2, User, Eye, EyeOff, LogIn, Loader, AlertCircle, C
 import { AppProvider, useApp } from "./context/AppContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { t, LANGS, type Lang, getGreeting } from "./i18n";
-import { Mail, Lock, Leaf, Building2, /* ... le reste de tes icônes ... */ } from "lucide-react";
+import {  Leaf, /* ... le reste de tes icônes ... */ } from "lucide-react";
 
 // ==================== COMPOSANTS RÉUTILISABLES ====================
 
@@ -98,7 +98,7 @@ function LoginPage() {
         await signup(email, password);
       }
     } catch (err: any) {
-      setError(t("loginError", lang) || "Erreur d'authentification. Vérifiez vos identifiants.");
+     setError("Erreur d'authentification. Vérifiez vos identifiants.");
     } finally {
       setLoading(false);
     }
@@ -109,7 +109,7 @@ function LoginPage() {
       <div className="w-full max-w-md bg-white rounded-3xl shadow-xl overflow-hidden animate-in">
         <div className="bg-green-600 p-8 text-center text-white relative">
           <div className="absolute top-4 right-4 flex gap-2">
-            {(["fr", "en", "dyu"] as const).map(l => (
+            {(["fr", "en"] as const).map(l => (
               <button 
                 key={l}
                 onClick={() => setLang(l)}
