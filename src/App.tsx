@@ -77,70 +77,113 @@ function Toast() {
 
 // ==================== PAGES ====================
 
-function LoginPage({ onLoginSuccess }: { onLoginSuccess: (role: "beneficiary" | "admin", groupName: string) => void }) {
-  const { setLang } = useApp();
-  const [mode, setMode] = useState<"role-select" | "login" | "signup">("role-select");
-  const [role, setRole] = useState<"beneficiary" | "admin" | null>(null);
-  const [groupName, setGroupName] = useState("");
+function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [isLogin, setIsLogin] = useState(true); // <-- Permet de basculer entre Connexion et Inscription
+  const { login, signup } = useAuth(); // <-- On récupère signup
+  const { lang, setLang } = useApp();
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
 
-  if (mode === "role-select") {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-amber-50/40 to-emerald-50/40 flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-sm">
-          <div className="text-center mb-8">
-            <div className="inline-block bg-gradient-to-br from-emerald-500 to-green-600 rounded-3xl p-4 shadow-lg mb-4"><span className="text-4xl">🌱</span></div>
-            <h1 className="text-4xl font-black text-stone-900 mb-1">AgriSusu</h1>
-            <p className="text-sm text-stone-600 font-medium">Épargne. Agriculture. Climat.</p>
-          </div>
-          <div className="flex gap-2 justify-center mb-8">
-            {["fr", "en"].map((l) => (
-              <button key={l} onClick={() => setLang(l as any)} className={`px-4 py-2 rounded-full font-bold text-sm transition-all ${l === "fr" ? "bg-emerald-600 text-white shadow-lg" : "bg-white text-stone-700 border border-stone-200"}`}>
-                {l === "fr" ? "🇫🇷 FR" : "🇬🇧 EN"}
-              </button>
-            ))}
-          </div>
-          <div className="space-y-3 mb-6">
-            <button onClick={() => { setRole("beneficiary"); setMode("login"); }} className="w-full bg-white border-2 border-emerald-300 rounded-2xl p-4 text-left active:bg-emerald-50 transition-all">
-              <div className="flex items-center gap-3"><div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center text-xl">👨‍🌾</div><div><div className="font-black text-stone-900">Bénéficiaire</div><div className="text-xs text-stone-600">Membre du groupement</div></div></div>
-            </button>
-            <button onClick={() => { setRole("admin"); setMode("login"); }} className="w-full bg-white border-2 border-violet-300 rounded-2xl p-4 text-left active:bg-violet-50 transition-all">
-              <div className="flex items-center gap-3"><div className="w-12 h-12 rounded-2xl bg-violet-100 flex items-center justify-center text-xl">👨‍💼</div><div><div className="font-black text-stone-900">Administrateur</div><div className="text-xs text-stone-600">Responsable du groupe</div></div></div>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const handleLogin = async () => {
-    if (!email || !password || !groupName) return;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
     setLoading(true);
-    setTimeout(() => {
+    try {
+      if (isLogin) {
+        await login(email, password);
+      } else {
+        await signup(email, password);
+      }
+    } catch (err: any) {
+      setError(t("loginError", lang) || "Erreur d'authentification. Vérifiez vos identifiants.");
+    } finally {
       setLoading(false);
-      setSuccess(true);
-      setTimeout(() => onLoginSuccess(role || "beneficiary", groupName), 1500);
-    }, 1200);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50/40 to-emerald-50/40 flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        <button onClick={() => setMode("role-select")} className="mb-4 text-sm font-bold text-stone-700 hover:text-stone-900 flex items-center gap-1">← Retour</button>
-        <div className="bg-white rounded-3xl p-6 shadow-lg border border-stone-200">
-          <div className="space-y-3">
-            <div><label className="block text-xs font-black text-stone-600 mb-1">Groupement</label><div className="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-xl px-3 py-3"><Building2 className="w-5 h-5 text-stone-500" /><input type="text" value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Kër Gox" className="bg-transparent flex-1 outline-none font-semibold" /></div></div>
-            <div><label className="block text-xs font-black text-stone-600 mb-1">Email</label><div className="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-xl px-3 py-3"><Mail className="w-5 h-5 text-stone-500" /><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@example.com" className="bg-transparent flex-1 outline-none font-semibold" /></div></div>
-            <div><label className="block text-xs font-black text-stone-600 mb-1">Mot de passe</label><div className="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-xl px-3 py-3"><Lock className="w-5 h-5 text-stone-500" /><input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="bg-transparent flex-1 outline-none font-semibold" /><button onClick={() => setShowPassword(!showPassword)} className="text-stone-500 hover:text-stone-700">{showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}</button></div></div>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-green-50 to-emerald-100">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl overflow-hidden animate-in">
+        <div className="bg-green-600 p-8 text-center text-white relative">
+          <div className="absolute top-4 right-4 flex gap-2">
+            {(["fr", "en", "dyu"] as const).map(l => (
+              <button 
+                key={l}
+                onClick={() => setLang(l)}
+                className={`text-xs font-bold px-2 py-1 rounded ${lang === l ? "bg-white text-green-700" : "bg-green-700 text-white"}`}
+              >
+                {l.toUpperCase()}
+              </button>
+            ))}
           </div>
-          <button onClick={handleLogin} disabled={loading || success} className={`w-full mt-4 py-3.5 rounded-2xl font-black flex items-center justify-center gap-2 transition-all ${loading || success ? "bg-stone-300 text-stone-600" : "bg-gradient-to-r from-emerald-500 to-green-600 text-white"}`}>
-            {loading ? <><Loader className="w-5 h-5 animate-spin" />Vérification...</> : success ? <><CheckCircle2 className="w-5 h-5" />Connecté ✓</> : <><LogIn className="w-5 h-5" />Se connecter</>}
-          </button>
+          <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
+            <Leaf className="w-10 h-10 text-white" />
+          </div>
+          <h1 className="text-3xl font-bold mb-2">AgriFinance</h1>
+          <p className="text-green-100 opacity-90">{isLogin ? t("welcome", lang) : "Créez votre compte"}</p>
         </div>
+
+        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+          {error && (
+            <div className="bg-red-50 text-red-600 p-4 rounded-xl flex items-center gap-3 text-sm">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <p>{error}</p>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input 
+                  type="email" 
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all outline-none"
+                  placeholder="contact@exemple.com"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">{t("password", lang)}</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input 
+                  type="password" 
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all outline-none"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-bold py-4 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+          >
+            {loading ? <Loader className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
+            {isLogin ? t("login", lang) : "S'inscrire"}
+          </button>
+          
+          <div className="text-center mt-4">
+            <button 
+              type="button" 
+              onClick={() => setIsLogin(!isLogin)} 
+              className="text-sm font-medium text-green-600 hover:text-green-700 underline"
+            >
+              {isLogin ? "Pas encore de compte ? S'inscrire" : "Déjà un compte ? Se connecter"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

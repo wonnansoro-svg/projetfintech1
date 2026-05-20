@@ -1,4 +1,5 @@
 // src/context/AuthContext.tsx
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import { auth } from '../firebase'; // Importe le auth depuis le fichier qu'on vient de créer
@@ -13,6 +14,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   login: (email: string, mdp: string) => Promise<void>;
+  signup: (email: string, mdp: string) => Promise<void>;
   logout: () => Promise<void>;
   loading: boolean;
 }
