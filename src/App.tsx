@@ -3,6 +3,7 @@ import { Mail, Lock, Building2, User, Eye, EyeOff, LogIn, Loader, AlertCircle, C
 import { AppProvider, useApp } from "./context/AppContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { t, LANGS, type Lang, getGreeting } from "./i18n";
+import { Mail, Lock, Leaf, Building2, /* ... le reste de tes icônes ... */ } from "lucide-react";
 
 // ==================== COMPOSANTS RÉUTILISABLES ====================
 
@@ -122,7 +123,7 @@ function LoginPage() {
             <Leaf className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-3xl font-bold mb-2">AgriFinance</h1>
-          <p className="text-green-100 opacity-90">{isLogin ? t("welcome", lang) : "Créez votre compte"}</p>
+          <p className="text-green-100 opacity-90">{isLogin ? "Bienvenue" : "Créez votre compte"}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
@@ -150,7 +151,7 @@ function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">{t("password", lang)}</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Mot de passe</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input 
@@ -159,7 +160,7 @@ function LoginPage() {
                   onChange={e => setPassword(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all outline-none"
                   placeholder="••••••••"
-                  required
+                  required      
                 />
               </div>
             </div>
@@ -171,7 +172,7 @@ function LoginPage() {
             className="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-bold py-4 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
           >
             {loading ? <Loader className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
-            {isLogin ? t("login", lang) : "S'inscrire"}
+            {isLogin ? "Se connecter" : "S'inscrire"}
           </button>
           
           <div className="text-center mt-4">
@@ -663,8 +664,8 @@ function Shell() {
   const [pageKey, setPageKey] = useState(0);
 
   if (!user) {
-    return <LoginPage onLoginSuccess={() => {}} />;
-  }
+  return <LoginPage />;
+}
 
   const bottomPages = new Set(["home", "weather", "parcelles", "payments", "identity"]);
   const bottomKey: PageKey = (bottomPages.has(page) ? page : "home") as PageKey;

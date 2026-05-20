@@ -1,8 +1,7 @@
-// src/context/AuthContext.tsx
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
+/// ✅ BON : Une seule ligne "import ... from 'firebase/auth'"
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
-import { auth } from '../firebase'; // Importe le auth depuis le fichier qu'on vient de créer
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
+import { auth } from '../firebase';
 
 // La structure de ton utilisateur
 interface User {
@@ -57,6 +56,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Fonction d'inscription
+  const signup = async (email: string, mdp: string) => {
+    try {
+      await createUserWithEmailAndPassword(auth, email, mdp);
+      // L'utilisateur est créé et connecté automatiquement par Firebase !
+    } catch (error) {
+      console.error("Erreur de création de compte :", error);
+      throw error;
+    }
+  };
+
   // Fonction de déconnexion
   const logout = async () => {
     try {
@@ -67,7 +77,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, loading }}>
       {/* On n'affiche l'application que lorsque Firebase a fini de vérifier la session */}
       {!loading && children} 
     </AuthContext.Provider>
