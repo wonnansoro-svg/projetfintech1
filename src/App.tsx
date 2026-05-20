@@ -453,9 +453,9 @@ function IdentityPage() {
             <div className="flex items-center gap-2"><div className="font-black">{t("idCard", lang)}</div></div>
           </div>
           <div className="flex items-center gap-4 mb-4">
-            <Avatar name="Mamadou Diop" size="xl" />
-            <div className="flex-1"><div className="text-xl font-black leading-tight">Mamadou Diop</div><div className="text-xs opacity-90 flex items-center gap-1 mt-1.5 font-medium">
-              <Phone className="w-3 h-3" /> +221 77 123 45 67
+            <Avatar name="SORO Wonnan" size="xl" />
+            <div className="flex-1"><div className="text-xl font-black leading-tight">SORO Wonnan</div><div className="text-xs opacity-90 flex items-center gap-1 mt-1.5 font-medium">
+              <Phone className="w-3 h-3" /> +225 0778014537
             </div></div>
           </div>
         </div>
@@ -664,8 +664,8 @@ function Shell() {
   const [pageKey, setPageKey] = useState(0);
 
   if (!user) {
-  return <LoginPage />;
-}
+    return <LoginPage />;
+  }
 
   const bottomPages = new Set(["home", "weather", "parcelles", "payments", "identity"]);
   const bottomKey: PageKey = (bottomPages.has(page) ? page : "home") as PageKey;
