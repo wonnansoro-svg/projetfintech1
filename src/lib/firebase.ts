@@ -4,7 +4,7 @@ import { getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth"; // <-- On ajoute ça pour l'authentification
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDrsqsBLw37q8VQl_okeG3_NuFhpEbyvIc",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: "fintech-f4dee.firebaseapp.com",
   projectId: "fintech-f4dee",
   storageBucket: "fintech-f4dee.firebasestorage.app",
