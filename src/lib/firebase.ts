@@ -1,25 +1,21 @@
+// src/firebase.ts
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getAnalytics } from "firebase/analytics";
+import { getAuth } from "firebase/auth"; // <-- On ajoute ça pour l'authentification
 
-// Configuration Firebase — À remplacer par vos vraies credentials
 const firebaseConfig = {
-  apiKey: "AIzaSyDemo123456789",
-  authDomain: "agrisusu-demo.firebaseapp.com",
-  projectId: "agrisusu-demo",
-  storageBucket: "agrisusu-demo.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abc123",
+  apiKey: "AIzaSyDrsqsBLw37q8VQl_okeG3_NuFhpEbyvIc",
+  authDomain: "fintech-f4dee.firebaseapp.com",
+  projectId: "fintech-f4dee",
+  storageBucket: "fintech-f4dee.firebasestorage.app",
+  messagingSenderId: "683189698437",
+  appId: "1:683189698437:web:4660db484bd377a1298eec",
+  measurementId: "G-NSF5PPM5KJ"
 };
 
+// Initialisation de Firebase
 const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
+// On exporte 'auth' pour pouvoir l'utiliser n'importe où dans l'application
 export const auth = getAuth(app);
-export const db = getFirestore(app);
-
-// Mode émulateur local pour développement (décommenter si Firebase Emulator installé)
-// if (import.meta.env.DEV) {
-//   connectAuthEmulator(auth, "http://localhost:9099", { disableWarnings: true });
-//   connectFirestoreEmulator(db, "localhost", 8080);
-// }
-
-export default app;

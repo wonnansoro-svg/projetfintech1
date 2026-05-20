@@ -1,88 +1,81 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+// src/context/AuthContext.tsx
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
+import { auth } from '../firebase'; // Importe le auth depuis le fichier qu'on vient de créer
 
-export type UserRole = "beneficiary" | "admin";
-
-export interface AuthUser {
+// La structure de ton utilisateur
+interface User {
   id: string;
-  email: string;
+  email: string | null;
   name: string;
-  phone?: string;
-  village?: string;
-  groupName: string;
-  role: UserRole;
-  createdAt: string;
 }
 
-interface AuthState {
-  user: AuthUser | null;
+interface AuthContextType {
+  user: User | null;
+  login: (email: string, mdp: string) => Promise<void>;
+  logout: () => Promise<void>;
   loading: boolean;
-  login: (email: string, password: string, groupName: string, role: UserRole) => Promise<void>;
-  signup: (data: Omit<AuthUser, "id" | "createdAt">, password: string) => Promise<void>;
-  logout: () => void;
 }
 
-const AuthContext = createContext<AuthState | null>(null);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    const stored = localStorage.getItem("agrisusu_user");
-    return stored ? JSON.parse(stored) : null;
-  });
-  const [loading, setLoading] = useState(false);
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const login = async (email: string, _password: string, groupName: string, role: UserRole) => {
-    setLoading(true);
+  // Ce useEffect écoute les changements de statut de Firebase
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
+      if (firebaseUser) {
+        // Utilisateur connecté
+        setUser({
+          id: firebaseUser.uid,
+          email: firebaseUser.email,
+          name: "Agriculteur", // On pourra changer ça plus tard avec une base de données
+        });
+      } else {
+        // Utilisateur déconnecté
+        setUser(null);
+      }
+      setLoading(false); // Fin du chargement
+    });
+
+    return () => unsubscribe(); // Nettoyage quand le composant est détruit
+  }, []);
+
+  // Fonction de connexion
+  const login = async (email: string, mdp: string) => {
     try {
-      // Simulation Firebase authentication
-      await new Promise((r) => setTimeout(r, 800));
-
-      const newUser: AuthUser = {
-        id: "user_" + Date.now(),
-        email,
-        name: email.split("@")[0],
-        groupName,
-        role,
-        createdAt: new Date().toISOString(),
-      };
-      setUser(newUser);
-      localStorage.setItem("agrisusu_user", JSON.stringify(newUser));
-    } finally {
-      setLoading(false);
+      // Firebase s'occupe de tout vérifier
+      await signInWithEmailAndPassword(auth, email, mdp);
+      // NB: Pas besoin de faire setUser ici, le onAuthStateChanged (plus haut) s'en occupe automatiquement !
+    } catch (error) {
+      console.error("Erreur de connexion Firebase :", error);
+      throw error; // Renvoie l'erreur pour pouvoir l'afficher sur l'écran de connexion
     }
   };
 
-  const signup = async (data: Omit<AuthUser, "id" | "createdAt">, _password: string) => {
-    setLoading(true);
+  // Fonction de déconnexion
+  const logout = async () => {
     try {
-      // Simulation Firebase signup
-      await new Promise((r) => setTimeout(r, 1000));
-
-      const newUser: AuthUser = {
-        ...data,
-        id: "user_" + Date.now(),
-        createdAt: new Date().toISOString(),
-      };
-      setUser(newUser);
-      localStorage.setItem("agrisusu_user", JSON.stringify(newUser));
-    } finally {
-      setLoading(false);
+      await signOut(auth);
+    } catch (error) {
+      console.error("Erreur de déconnexion :", error);
     }
-  };
-
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem("agrisusu_user");
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
-      {children}
+    <AuthContext.Provider value={{ user, login, logout, loading }}>
+      {/* On n'affiche l'application que lorsque Firebase a fini de vérifier la session */}
+      {!loading && children} 
     </AuthContext.Provider>
   );
-}
+};
 
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-  return ctx;
-}
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth doit être utilisé à l'intérieur d'un AuthProvider");
+  }
+  return context;
+};
