@@ -6,6 +6,7 @@ import {
   Clock, Phone, QrCode, MapPin, User, Leaf, Users, Truck, Warehouse,
   Recycle, FileText, Camera, BarChart2, CreditCard, Building2,
   Package, BadgeCheck, ChevronRight, Star, TrendingUp, Banknote,
+  LogOut, Settings, Bell, Search, PieChart, UserPlus, Activity, DollarSign, Filter, Edit,
 } from "lucide-react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -14,44 +15,38 @@ import { t, LANGS, type Lang, getGreeting } from "./i18n";
 // ==================== COMPOSANTS RÉUTILISABLES ====================
 
 function Tile({ emoji, label, sub, onClick, color = "green", badge, size = "lg" }: {
-  emoji?: string;
-  label: string;
-  sub?: string;
-  onClick?: () => void;
-  color?: string;
-  badge?: any;
-  size?: string;
+  emoji?: string; label: string; sub?: string; onClick?: () => void;
+  color?: string; badge?: any; size?: string;
 }) {
   const COLORS: Record<string, string> = {
-    green:   "bg-green-600 active:bg-green-700 text-white",
-    amber:   "bg-amber-500 active:bg-amber-600 text-white",
-    sky:     "bg-sky-500 active:bg-sky-600 text-white",
-    rose:    "bg-rose-500 active:bg-rose-600 text-white",
-    violet:  "bg-violet-600 active:bg-violet-700 text-white",
-    emerald: "bg-emerald-500 active:bg-emerald-600 text-white",
-    orange:  "bg-orange-500 active:bg-orange-600 text-white",
-    indigo:  "bg-indigo-600 active:bg-indigo-700 text-white",
-    teal:    "bg-teal-600 active:bg-teal-700 text-white",
-    lime:    "bg-lime-600 active:bg-lime-700 text-white",
-    cyan:    "bg-cyan-600 active:bg-cyan-700 text-white",
-    fuchsia: "bg-fuchsia-600 active:bg-fuchsia-700 text-white",
-    slate:   "bg-slate-600 active:bg-slate-700 text-white",
-    brown:   "bg-amber-800 active:bg-amber-900 text-white",
+    green:   "bg-green-600 active:bg-green-700",
+    amber:   "bg-amber-500 active:bg-amber-600",
+    sky:     "bg-sky-500 active:bg-sky-600",
+    rose:    "bg-rose-500 active:bg-rose-600",
+    violet:  "bg-violet-600 active:bg-violet-700",
+    emerald: "bg-emerald-500 active:bg-emerald-600",
+    orange:  "bg-orange-500 active:bg-orange-600",
+    indigo:  "bg-indigo-600 active:bg-indigo-700",
+    teal:    "bg-teal-600 active:bg-teal-700",
+    lime:    "bg-lime-600 active:bg-lime-700",
+    cyan:    "bg-cyan-600 active:bg-cyan-700",
+    fuchsia: "bg-fuchsia-600 active:bg-fuchsia-700",
+    slate:   "bg-slate-600 active:bg-slate-700",
+    brown:   "bg-amber-800 active:bg-amber-900",
   };
-  const sizeCls = size === "lg" ? "p-5 gap-3" : "p-4 gap-2";
-  const textSize = size === "lg" ? "text-lg" : "text-base";
   return (
-    <button onClick={onClick} className={`relative flex flex-col items-center justify-center rounded-3xl shadow-md active:scale-95 transition-transform ${COLORS[color] ?? COLORS.green} ${sizeCls}`}>
+    <button onClick={onClick}
+      className={`relative flex flex-col justify-between text-white rounded-2xl shadow active:scale-95 transition-transform p-3.5 min-h-[90px] ${COLORS[color] ?? COLORS.green}`}>
       {badge !== undefined && (
-        <span className="absolute top-2 right-2 bg-white text-green-800 text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
+        <span className="absolute top-2 right-2 bg-white text-rose-600 text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow">
           {badge}
         </span>
       )}
-      <div className="bg-white/25 rounded-2xl w-14 h-14 flex items-center justify-center">
-        {emoji && <span className="text-3xl">{emoji}</span>}
+      <span className="text-2xl leading-none">{emoji}</span>
+      <div>
+        <div className="text-sm font-black leading-tight">{label}</div>
+        {sub && <div className="text-[10px] opacity-80 mt-0.5 leading-tight">{sub}</div>}
       </div>
-      <div className={`${textSize} font-bold leading-tight text-center`}>{label}</div>
-      {sub && <div className="text-xs opacity-90 text-center leading-tight">{sub}</div>}
     </button>
   );
 }
@@ -144,71 +139,92 @@ function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-green-50 to-emerald-100">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-stone-100 to-green-50">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-xl overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-br from-green-600 to-teal-700 p-8 text-center text-white relative">
-          <div className="absolute top-4 right-4 flex gap-2">
+        {/* Brand */}
+        <div className="p-6 pb-0 text-center">
+          <div className="flex justify-end mb-4 gap-2">
             {(["fr", "en"] as const).map(l => (
               <button key={l} onClick={() => setLang(l)}
-                className={`text-xs font-bold px-2 py-1 rounded ${lang === l ? "bg-white text-green-700" : "bg-green-700 text-white"}`}>
+                className={`text-xs font-bold px-3 py-1.5 rounded-full transition-all ${lang === l ? "bg-green-600 text-white" : "bg-stone-100 text-stone-600"}`}>
                 {l.toUpperCase()}
               </button>
             ))}
           </div>
-          <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
-            <Leaf className="w-10 h-10 text-white" />
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-green-600 rounded-2xl mb-3 shadow-lg">
+            <Leaf className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-3xl font-bold mb-1">COOPAVEC</h1>
-          <p className="text-green-100 text-sm">AgriFinance Pay</p>
-          <p className="text-green-200 opacity-80 text-xs mt-1">
-            {isLogin ? "Bienvenue — Connectez-vous" : "Créez votre compte agricole"}
-          </p>
+          <h1 className="text-2xl font-black text-stone-900 tracking-tight">COOPAVEC</h1>
+          <p className="text-stone-500 text-xs mt-0.5">AgriFinance Pay · Côte d'Ivoire 🇨🇮</p>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Tab switcher */}
+          <div className="flex gap-1 p-1 bg-stone-100 rounded-2xl mb-2">
+            {[{v:true,l:"Connexion"},{v:false,l:"Inscription"}].map(it=>(
+              <button key={String(it.v)} type="button" onClick={() => setIsLogin(it.v)}
+                className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${isLogin === it.v ? "bg-white shadow text-stone-900" : "text-stone-500"}`}>
+                {it.l}
+              </button>
+            ))}
+          </div>
+
           {error && (
-            <div className="bg-red-50 text-red-600 p-4 rounded-xl flex items-center gap-3 text-sm">
-              <AlertCircle className="w-5 h-5 shrink-0" />
-              <p>{error}</p>
+            <div className="bg-red-50 text-red-600 p-3 rounded-xl flex items-center gap-3 text-sm">
+              <AlertCircle className="w-4 h-4 shrink-0" /><p>{error}</p>
             </div>
           )}
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-                  placeholder="contact@exemple.com" required />
-              </div>
+          <div>
+            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Email</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                className="w-full pl-9 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-sm"
+                placeholder="contact@exemple.com" required />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Mot de passe</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input type={showPwd ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-                  placeholder="••••••••" required />
-                <button type="button" onClick={() => setShowPwd(!showPwd)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
-                  {showPwd ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
-              </div>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Mot de passe</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+              <input type={showPwd ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)}
+                className="w-full pl-9 pr-10 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-sm"
+                placeholder="••••••••" required />
+              <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400">
+                {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
           <button type="submit" disabled={loading}
-            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 disabled:opacity-70">
-            {loading ? <Loader className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-70 transition-colors">
+            {loading ? <Loader className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
             {isLogin ? "Se connecter" : "S'inscrire"}
           </button>
 
+          {/* Demo quick access */}
+          <div className="pt-2 border-t border-stone-100">
+            <p className="text-[11px] text-center text-stone-400 font-medium mb-2.5">Accès rapide démo</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label:"Agriculteur", emoji:"🌾", email:"farmer@demo.ci",  cls:"bg-emerald-50 text-emerald-700 border-emerald-200" },
+                { label:"Client",      emoji:"🏢", email:"client@demo.ci",  cls:"bg-sky-50 text-sky-700 border-sky-200"             },
+                { label:"Admin",       emoji:"⚙️",  email:"admin@demo.ci",   cls:"bg-violet-50 text-violet-700 border-violet-200"    },
+              ].map(d=>(
+                <button key={d.label} type="button"
+                  onClick={() => { setEmail(d.email); setPassword("demo1234"); setIsLogin(true); }}
+                  className={`py-2 rounded-xl border text-xs font-bold ${d.cls}`}>
+                  {d.emoji} {d.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="text-center">
             <button type="button" onClick={() => setIsLogin(!isLogin)}
-              className="text-sm font-medium text-green-600 hover:text-green-700 underline">
+              className="text-xs font-medium text-green-600 hover:text-green-700 underline">
               {isLogin ? "Pas encore de compte ? S'inscrire" : "Déjà un compte ? Se connecter"}
             </button>
           </div>
@@ -293,38 +309,68 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
         </button>
       )}
 
-      {/* Grille modules */}
-      <div className="grid grid-cols-2 gap-3">
-        {modules.map((m, i) => (
-          <div key={m.page} className={`animate-fade-up delay-${(i % 8) + 3}`}>
-            <Tile
-              emoji={m.emoji}
-              label={m.label}
-              sub={m.sub}
-              color={m.color}
-              onClick={() => onNavigate(m.page)}
-              badge={(m as any).badge}
-            />
-          </div>
-        ))}
-        {/* Paiements pleine largeur */}
-        <div className="col-span-2">
-          <Tile emoji="💸" label="Paiements Mobile Money" sub="Wave · Orange · MTN · Moov"
-            color="indigo" onClick={() => onNavigate("payments")} size="md" />
-        </div>
-        {/* Météo pleine largeur */}
-        <div className="col-span-2">
-          <Tile emoji="☁️" label="Météo & Alertes" sub="Conseils agronomiques"
-            color="sky" onClick={() => onNavigate("weather")} size="md" />
-        </div>
+      {/* Raccourcis rapides – pleine largeur */}
+      <div className="grid grid-cols-2 gap-2.5 mb-5">
+        <button onClick={() => onNavigate("payments")}
+          className="flex items-center gap-3 bg-indigo-600 active:bg-indigo-700 text-white rounded-2xl p-3.5 shadow active:scale-95 transition-transform">
+          <span className="text-2xl">💸</span>
+          <div className="text-left"><div className="font-black text-sm leading-tight">Paiements</div><div className="text-[10px] opacity-75">Wave · Orange · MTN</div></div>
+        </button>
+        <button onClick={() => onNavigate("weather")}
+          className="flex items-center gap-3 bg-sky-500 active:bg-sky-600 text-white rounded-2xl p-3.5 shadow active:scale-95 transition-transform">
+          <span className="text-2xl">☁️</span>
+          <div className="text-left"><div className="font-black text-sm leading-tight">Météo</div><div className="text-[10px] opacity-75">Alertes & Conseils</div></div>
+        </button>
       </div>
 
-      <div className="mt-6 text-center">
-        <div className="inline-flex items-center gap-2 bg-white rounded-full px-4 py-2 shadow-sm border border-stone-200">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs font-semibold text-stone-600">Fonctionne hors ligne · USSD disponible</span>
-        </div>
-        <div className="mt-3 text-[11px] text-stone-400 font-medium">COOPAVEC AgriFinance Pay · Côte d'Ivoire 🇨🇮</div>
+      {/* Section: Identité & Champs */}
+      <p className="text-[11px] font-black text-stone-400 uppercase tracking-widest mb-2">Identité & Champs</p>
+      <div className="grid grid-cols-2 gap-2.5 mb-4">
+        {modules.slice(0,2).map(m => (
+          <Tile key={m.page} emoji={m.emoji} label={m.label} sub={m.sub} color={m.color}
+            onClick={() => onNavigate(m.page)} badge={(m as any).badge} />
+        ))}
+      </div>
+
+      {/* Section: Finance */}
+      <p className="text-[11px] font-black text-stone-400 uppercase tracking-widest mb-2">Finance & Épargne</p>
+      <div className="grid grid-cols-2 gap-2.5 mb-4">
+        {modules.slice(2,4).map(m => (
+          <Tile key={m.page} emoji={m.emoji} label={m.label} sub={m.sub} color={m.color}
+            onClick={() => onNavigate(m.page)} badge={(m as any).badge} />
+        ))}
+      </div>
+
+      {/* Section: Protection */}
+      <p className="text-[11px] font-black text-stone-400 uppercase tracking-widest mb-2">Protection & Sinistres</p>
+      <div className="grid grid-cols-2 gap-2.5 mb-4">
+        {modules.slice(4,8).map(m => (
+          <Tile key={m.page} emoji={m.emoji} label={m.label} sub={m.sub} color={m.color}
+            onClick={() => onNavigate(m.page)} badge={(m as any).badge} />
+        ))}
+      </div>
+
+      {/* Section: Coopérative */}
+      <p className="text-[11px] font-black text-stone-400 uppercase tracking-widest mb-2">Coopérative & Marché</p>
+      <div className="grid grid-cols-2 gap-2.5 mb-4">
+        {modules.slice(8,12).map(m => (
+          <Tile key={m.page} emoji={m.emoji} label={m.label} sub={m.sub} color={m.color}
+            onClick={() => onNavigate(m.page)} badge={(m as any).badge} />
+        ))}
+      </div>
+
+      {/* Section: Durabilité */}
+      <p className="text-[11px] font-black text-stone-400 uppercase tracking-widest mb-2">Durabilité</p>
+      <div className="grid grid-cols-2 gap-2.5 mb-6">
+        {modules.slice(12,14).map(m => (
+          <Tile key={m.page} emoji={m.emoji} label={m.label} sub={m.sub} color={m.color}
+            onClick={() => onNavigate(m.page)} badge={(m as any).badge} />
+        ))}
+      </div>
+
+      <div className="flex items-center justify-center gap-2 text-xs text-stone-400">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+        Hors ligne disponible · USSD actif · 🇨🇮
       </div>
     </div>
   );
@@ -332,16 +378,16 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
 
 // ==================== MODULE 1 : MON ID AGRICOLE ====================
 
-function IdentityPage() {
+function IdentityPage({ onLogout }: { onLogout?: () => void }) {
   const [tab, setTab] = useState<"profil" | "kyc" | "gps">("profil");
 
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       {/* Header Card */}
       <div className="animate-fade-up relative bg-gradient-to-br from-orange-500 via-amber-600 to-yellow-600 text-white rounded-3xl p-5 shadow-xl mb-4">
-        <div className="flex items-center gap-4 mb-3">
+        <div className="flex items-start gap-4 mb-4">
           <Avatar name="SORO Wonnan" size="xl" />
-          <div>
+          <div className="flex-1">
             <div className="text-xl font-black">SORO Wonnan</div>
             <div className="text-xs opacity-90 flex items-center gap-1 mt-1"><Phone className="w-3 h-3" /> +225 07 78 01 45 37</div>
             <div className="mt-2 inline-flex items-center gap-1 bg-white/20 rounded-full px-3 py-1 text-xs font-bold">
@@ -349,6 +395,10 @@ function IdentityPage() {
             </div>
           </div>
         </div>
+        <button onClick={onLogout}
+          className="w-full flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 border border-white/30 text-white rounded-xl py-2.5 text-sm font-bold transition-colors active:scale-95">
+          <LogOut className="w-4 h-4" /> Se déconnecter
+        </button>
       </div>
 
       {/* Tabs */}
@@ -1331,8 +1381,10 @@ function TopBar({ title, onBack, userName, onLogout }: any) {
               {LANGS.find((l) => l.code === lang)?.flag}
             </button>
             {onLogout && (
-              <button onClick={onLogout} className="flex items-center gap-1 bg-stone-100 hover:bg-stone-200 rounded-full px-2.5 py-1.5 text-xs font-bold text-stone-700">
-                🚪
+              <button onClick={onLogout}
+                className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-full px-2.5 py-1.5 text-xs font-bold transition-colors">
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Sortir</span>
               </button>
             )}
           </div>
@@ -1424,16 +1476,547 @@ const PAGE_TITLES: Record<string, string> = {
   payments:    "Paiements Mobile",
 };
 
+// ==================== ADMIN SPACE ====================
+
+function AdminSpace({ onLogout }: { onLogout: () => void }) {
+  const [tab, setTab] = useState<"dash" | "clients" | "txns" | "settings">("dash");
+  const { online } = useApp();
+
+  const members = [
+    { name: "Koné Mamadou",      role: "Agriculteur",  region: "Hambol",  status: "actif",    balance: 45000  },
+    { name: "Diabaté Aminata",   role: "Client",        region: "Bouaké", status: "actif",    balance: 120000 },
+    { name: "Soro Wonnan",       role: "Agriculteur",  region: "Katiola", status: "actif",    balance: 75000  },
+    { name: "Ouattara Ibrahim",  role: "Investisseur", region: "Abidjan", status: "inactif",  balance: 250000 },
+    { name: "Traoré Fatoumata",  role: "Agriculteur",  region: "Ferké",  status: "actif",    balance: 32000  },
+    { name: "Coulibaly Jean",    role: "Client",        region: "Daloa",  status: "suspendu", balance: 0      },
+  ];
+
+  const kpis = [
+    { label: "Membres actifs", val: "1 247", icon: Users,    trend: "+12%", up: true  },
+    { label: "Volume mensuel", val: "48.2M F", icon: Activity, trend: "+8%",  up: true  },
+    { label: "Épargne totale", val: "124M F",  icon: DollarSign,trend:"+5%", up: true  },
+    { label: "Crédits cours",  val: "23",     icon: CreditCard,trend: "-2",  up: false },
+  ];
+
+  const navItems = [
+    { id: "dash",     icon: PieChart,  label: "Vue d'ensemble" },
+    { id: "clients",  icon: Users,     label: "Membres"         },
+    { id: "txns",     icon: Activity,  label: "Transactions"    },
+    { id: "settings", icon: Settings,  label: "Paramètres"      },
+  ] as const;
+
+  return (
+    <div className="min-h-screen bg-stone-50">
+      {/* Header */}
+      <header className="sticky top-0 z-30 bg-white border-b border-stone-200 shadow-sm">
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-violet-600 rounded-xl flex items-center justify-center">
+              <Settings className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <div className="font-black text-stone-900 text-sm">COOPAVEC Admin</div>
+              <div className="flex items-center gap-1 text-[10px] text-stone-400">
+                {online ? <Wifi className="w-3 h-3 text-emerald-500" /> : <WifiOff className="w-3 h-3 text-amber-500" />}
+                {online ? "En ligne" : "Hors ligne"}
+              </div>
+            </div>
+          </div>
+          <button onClick={onLogout}
+            className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl px-3 py-2 text-xs font-bold transition-colors">
+            <LogOut className="w-4 h-4" /> Déconnexion
+          </button>
+        </div>
+      </header>
+
+      {/* Sub-nav */}
+      <div className="sticky top-[57px] z-20 bg-white border-b border-stone-100">
+        <div className="max-w-2xl mx-auto px-3 flex gap-1 py-2 overflow-x-auto">
+          {navItems.map(it => {
+            const Icon = it.icon;
+            const active = tab === it.id;
+            return (
+              <button key={it.id} onClick={() => setTab(it.id as any)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  active ? "bg-violet-600 text-white" : "text-stone-500 hover:bg-stone-100"
+                }`}>
+                <Icon className="w-3.5 h-3.5" />{it.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <main className="max-w-2xl mx-auto px-4 py-5 pb-10">
+
+        {/* ── DASHBOARD ── */}
+        {tab === "dash" && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-lg font-black text-stone-900">Tableau de bord</h2>
+              <p className="text-xs text-stone-400 mt-0.5">Mis à jour le 28 juin 2026</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {kpis.map((k, i) => {
+                const Icon = k.icon;
+                return (
+                  <div key={i} className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+                    <div className="w-8 h-8 bg-violet-50 rounded-xl flex items-center justify-center mb-3">
+                      <Icon className="w-4 h-4 text-violet-600" />
+                    </div>
+                    <div className="font-black text-stone-900 text-xl">{k.val}</div>
+                    <div className="text-xs text-stone-500 mt-0.5">{k.label}</div>
+                    <div className={`text-xs font-bold mt-2 ${k.up ? "text-emerald-600" : "text-stone-400"}`}>{k.trend} ce mois</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Activité récente */}
+            <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-stone-100 flex justify-between items-center">
+                <span className="font-bold text-stone-800 text-sm">Activité récente</span>
+                <button className="text-xs text-violet-600 font-bold">Tout voir</button>
+              </div>
+              {[
+                { name: "Koné Mamadou",   action: "Cotisation AgriSusu",     time: "il y a 5 min",  amount: "+5 000 F",  pos: true  },
+                { name: "Diabaté Aminata",action: "Investissement Anacarde",  time: "il y a 23 min", amount: "+50 000 F", pos: true  },
+                { name: "Soro Wonnan",    action: "Crédit accordé",           time: "il y a 1h",     amount: "-25 000 F", pos: false },
+                { name: "Traoré Fatouma",action: "Déclaration sinistre",     time: "il y a 2h",     amount: "—",         pos: null  },
+              ].map((it, i) => (
+                <div key={i} className="px-4 py-3 flex items-center gap-3 border-b border-stone-50 last:border-0">
+                  <Avatar name={it.name} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-stone-800 text-sm truncate">{it.name}</div>
+                    <div className="text-xs text-stone-500">{it.action} · {it.time}</div>
+                  </div>
+                  <div className={`text-sm font-black flex-shrink-0 ${it.pos === true ? "text-emerald-600" : it.pos === false ? "text-rose-600" : "text-stone-400"}`}>
+                    {it.amount}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Alertes */}
+            <div className="space-y-2">
+              <p className="text-[11px] font-black text-stone-400 uppercase tracking-widest">Alertes</p>
+              {[
+                { warn: true,  msg: "3 crédits arrivent à échéance cette semaine" },
+                { warn: false, msg: "Mise à jour des tarifs Wave prévue le 01/07"  },
+              ].map((a, i) => (
+                <div key={i} className={`flex items-start gap-3 p-3 rounded-xl ${a.warn ? "bg-amber-50 border border-amber-200" : "bg-sky-50 border border-sky-200"}`}>
+                  <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${a.warn ? "text-amber-600" : "text-sky-600"}`} />
+                  <p className="text-xs text-stone-700 font-medium">{a.msg}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── MEMBRES ── */}
+        {tab === "clients" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-black text-stone-900">Membres</h2>
+              <button className="flex items-center gap-1.5 bg-violet-600 text-white rounded-xl px-3 py-2 text-xs font-bold">
+                <UserPlus className="w-3.5 h-3.5" /> Ajouter
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+                <input type="text" placeholder="Rechercher…"
+                  className="w-full pl-9 pr-4 py-2.5 bg-white border border-stone-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-400" />
+              </div>
+              <button className="flex items-center gap-1.5 bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-bold text-stone-600">
+                <Filter className="w-3.5 h-3.5" /> Filtrer
+              </button>
+            </div>
+            <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+              {members.map((m, i) => (
+                <div key={i} className="px-4 py-3.5 flex items-center gap-3 border-b border-stone-50 last:border-0">
+                  <Avatar name={m.name} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-stone-900 text-sm">{m.name}</div>
+                    <div className="text-xs text-stone-500">{m.role} · {m.region}</div>
+                  </div>
+                  <div className="text-right flex-shrink-0 mr-2">
+                    <div className="font-black text-stone-800 text-sm">{m.balance.toLocaleString("fr-FR")} F</div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      m.status === "actif" ? "bg-emerald-100 text-emerald-700" :
+                      m.status === "inactif" ? "bg-stone-100 text-stone-500" :
+                      "bg-red-100 text-red-700"
+                    }`}>{m.status}</span>
+                  </div>
+                  <button className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-400">
+                    <Edit className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-center text-stone-400">{members.length} membres affichés sur 1 247</p>
+          </div>
+        )}
+
+        {/* ── TRANSACTIONS ── */}
+        {tab === "txns" && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-black text-stone-900">Transactions</h2>
+            <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+              {[
+                { id:"TXN-001", label:"AgriSusu — Koné M.",          type:"entree",  amount:5000,  date:"28/06 · 09h05" },
+                { id:"TXN-002", label:"Investissement Anacarde",       type:"entree",  amount:50000, date:"28/06 · 08h42" },
+                { id:"TXN-003", label:"Crédit Agricole — Soro",       type:"sortie",  amount:25000, date:"28/06 · 08h15" },
+                { id:"TXN-004", label:"Envoi Wave — Traoré F.",        type:"sortie",  amount:10000, date:"27/06 · 17h30" },
+                { id:"TXN-005", label:"Indemnité Sécheresse",          type:"entree",  amount:15000, date:"27/06 · 14h20" },
+                { id:"TXN-006", label:"Abonnement coopérative",        type:"sortie",  amount:2000,  date:"27/06 · 11h00" },
+              ].map(tx => (
+                <div key={tx.id} className="px-4 py-3.5 flex items-center gap-3 border-b border-stone-50 last:border-0">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${tx.type === "entree" ? "bg-emerald-100" : "bg-rose-100"}`}>
+                    {tx.type === "entree" ? <ArrowDownLeft className="w-4 h-4 text-emerald-600" /> : <ArrowUpRight className="w-4 h-4 text-rose-600" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-stone-800 text-sm truncate">{tx.label}</div>
+                    <div className="text-xs text-stone-400">{tx.id} · {tx.date}</div>
+                  </div>
+                  <div className={`font-black text-sm flex-shrink-0 ${tx.type === "entree" ? "text-emerald-600" : "text-rose-600"}`}>
+                    {tx.type === "entree" ? "+" : "-"}{tx.amount.toLocaleString("fr-FR")} F
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── PARAMÈTRES ── */}
+        {tab === "settings" && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-black text-stone-900">Paramètres</h2>
+            <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+              {[
+                { icon: Bell,       label: "Notifications",    desc: "Alertes système"         },
+                { icon: Shield,     label: "Sécurité & accès", desc: "Rôles et permissions"    },
+                { icon: FileText,   label: "Rapports",         desc: "Générer des exports"     },
+                { icon: Building2,  label: "Coopérative",      desc: "Informations structure"  },
+              ].map((it, i) => {
+                const Icon = it.icon;
+                return (
+                  <div key={i} className="flex items-center gap-3 px-4 py-4 border-b border-stone-50 last:border-0 hover:bg-stone-50 cursor-pointer">
+                    <div className="w-9 h-9 bg-violet-50 rounded-xl flex items-center justify-center">
+                      <Icon className="w-4 h-4 text-violet-600" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-bold text-stone-800 text-sm">{it.label}</div>
+                      <div className="text-xs text-stone-500">{it.desc}</div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-stone-300" />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="bg-red-50 rounded-2xl border border-red-100 p-4">
+              <p className="text-sm font-bold text-red-700 mb-3">Zone dangereuse</p>
+              <button onClick={onLogout}
+                className="w-full flex items-center justify-center gap-2 bg-white border border-red-200 text-red-600 py-3 rounded-xl font-bold text-sm hover:bg-red-600 hover:text-white transition-colors">
+                <LogOut className="w-4 h-4" /> Se déconnecter
+              </button>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+// ==================== CLIENT SPACE ====================
+
+function ClientSpace({ onLogout }: { onLogout: () => void }) {
+  const [tab, setTab] = useState<"apercu" | "projets" | "rapports" | "profil">("apercu");
+  const { online } = useApp();
+
+  const projects = [
+    { name: "Anacarde Hambol",      emoji: "🥜", target: 500000, raised: 310000, ret: "12%", status: "En cours",  echeance: "Déc 2026" },
+    { name: "Irrigation Maïs",      emoji: "🌽", target: 200000, raised: 200000, ret: "10%", status: "Complet",   echeance: "Sep 2026" },
+    { name: "Cacao Bio Daloa",       emoji: "🍫", target: 800000, raised: 240000, ret: "15%", status: "En cours",  echeance: "Mar 2027" },
+  ];
+
+  const navItems = [
+    { id: "apercu",   icon: Home,       label: "Accueil"  },
+    { id: "projets",  icon: TrendingUp, label: "Projets"  },
+    { id: "rapports", icon: BarChart2,  label: "Rapports" },
+    { id: "profil",   icon: User,       label: "Profil"   },
+  ] as const;
+
+  return (
+    <div className="min-h-screen bg-stone-50">
+      {/* Header */}
+      <header className="sticky top-0 z-30 bg-white border-b border-stone-200 shadow-sm">
+        <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-sky-600 rounded-xl flex items-center justify-center">
+              <BarChart2 className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <div className="font-black text-stone-900 text-sm">Espace Client</div>
+              <div className="flex items-center gap-1 text-[10px] text-stone-400">
+                {online ? <Wifi className="w-3 h-3 text-emerald-500" /> : <WifiOff className="w-3 h-3 text-amber-500" />}
+                COOPAVEC · Investisseur
+              </div>
+            </div>
+          </div>
+          <button onClick={onLogout}
+            className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl px-3 py-2 text-xs font-bold transition-colors">
+            <LogOut className="w-4 h-4" /> Déconnexion
+          </button>
+        </div>
+      </header>
+
+      {/* Bottom nav */}
+      <nav className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-lg border-t border-stone-200 z-30">
+        <div className="max-w-xl mx-auto grid grid-cols-4">
+          {navItems.map(it => {
+            const Icon = it.icon;
+            const active = tab === it.id;
+            return (
+              <button key={it.id} onClick={() => setTab(it.id as any)}
+                className="relative flex flex-col items-center justify-center py-2.5 gap-0.5">
+                {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-sky-500 rounded-b-full" />}
+                <div className={`p-1.5 rounded-xl ${active ? "bg-sky-100" : ""}`}>
+                  <Icon className="w-5 h-5" style={{ color: active ? "#0284c7" : "#78716c" }} strokeWidth={active ? 2.5 : 2} />
+                </div>
+                <span className={`text-[10px] ${active ? "font-extrabold text-sky-700" : "font-medium text-stone-500"}`}>{it.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      <main className="max-w-xl mx-auto px-4 py-5 pb-24">
+
+        {/* ── APERÇU ── */}
+        {tab === "apercu" && (
+          <div className="space-y-5">
+            <div className="flex items-center gap-3">
+              <Avatar name="Diabaté A." size="lg" />
+              <div>
+                <div className="text-xs text-stone-400 font-medium">Bonjour 👋</div>
+                <div className="font-black text-stone-900 text-xl">Diabaté Aminata</div>
+                <div className="text-xs text-stone-500">Investisseur · Bouaké</div>
+              </div>
+            </div>
+
+            {/* Portfolio */}
+            <div className="bg-gradient-to-br from-sky-500 via-sky-600 to-indigo-700 rounded-3xl p-5 text-white shadow-xl">
+              <div className="text-xs opacity-75 font-medium mb-1">Mon portefeuille</div>
+              <div className="text-4xl font-black tracking-tight">610 000 <span className="text-lg opacity-70">F</span></div>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="bg-white/15 rounded-xl p-3"><div className="text-xs opacity-75">Rendement moyen</div><div className="font-black text-lg mt-0.5">11.5% /an</div></div>
+                <div className="bg-white/15 rounded-xl p-3"><div className="text-xs opacity-75">Projets actifs</div><div className="font-black text-lg mt-0.5">2 projets</div></div>
+              </div>
+            </div>
+
+            {/* Mes investissements */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="font-black text-stone-800 text-sm">Mes investissements</p>
+                <button onClick={() => setTab("projets")} className="text-xs text-sky-600 font-bold">Tout voir</button>
+              </div>
+              <div className="space-y-2.5">
+                {[
+                  { name: "Anacarde Hambol", amount: 50000, gain: "+6 000 F", pct: "+12%", emoji: "🥜" },
+                  { name: "Irrigation Maïs", amount: 30000, gain: "+3 000 F", pct: "+10%", emoji: "🌽" },
+                ].map((inv, i) => (
+                  <div key={i} className="bg-white rounded-2xl p-3.5 border border-stone-100 shadow-sm flex items-center gap-3">
+                    <span className="text-2xl">{inv.emoji}</span>
+                    <div className="flex-1">
+                      <div className="font-bold text-stone-800 text-sm">{inv.name}</div>
+                      <div className="text-xs text-stone-500">{inv.amount.toLocaleString("fr-FR")} F investi</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-black text-emerald-600 text-sm">{inv.gain}</div>
+                      <div className="text-xs text-emerald-500 font-bold">{inv.pct}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Activité */}
+            <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-stone-50 font-bold text-stone-800 text-sm">Activité récente</div>
+              {[
+                { icon: "💰", label: "Rendement Anacarde",        date: "28 juin",  amount: "+6 000 F",  pos: true  },
+                { icon: "📊", label: "Rapport semestriel dispo",  date: "25 juin",  amount: "—",         pos: null  },
+                { icon: "✅", label: "Investissement Maïs confirmé", date: "20 juin", amount:"-30 000 F", pos: false },
+              ].map((it, i) => (
+                <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-stone-50 last:border-0">
+                  <span className="text-lg">{it.icon}</span>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-stone-800">{it.label}</div>
+                    <div className="text-xs text-stone-400">{it.date}</div>
+                  </div>
+                  <div className={`text-sm font-bold ${it.pos === true ? "text-emerald-600" : it.pos === false ? "text-rose-600" : "text-stone-400"}`}>{it.amount}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── PROJETS ── */}
+        {tab === "projets" && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-black text-stone-900">Projets disponibles</h2>
+            {projects.map((p, i) => {
+              const pct = Math.round(p.raised / p.target * 100);
+              return (
+                <div key={i} className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+                  <div className="p-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      <span className="text-3xl">{p.emoji}</span>
+                      <div className="flex-1">
+                        <div className="font-black text-stone-900">{p.name}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status === "Complet" ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-700"}`}>{p.status}</span>
+                          <span className="text-xs text-stone-400">Échéance {p.echeance}</span>
+                        </div>
+                      </div>
+                      <div className="bg-lime-50 border border-lime-200 rounded-xl px-2.5 py-1.5 text-center">
+                        <div className="font-black text-lime-700 text-sm">{p.ret}</div>
+                        <div className="text-[9px] text-lime-600">/an</div>
+                      </div>
+                    </div>
+                    <div className="flex justify-between text-xs text-stone-400 mb-1.5">
+                      <span>{p.raised.toLocaleString("fr-FR")} F levés</span>
+                      <span className="font-black text-stone-700">{pct}%</span>
+                    </div>
+                    <div className="h-2 bg-stone-100 rounded-full overflow-hidden mb-3">
+                      <div className="h-full bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                    {p.status !== "Complet" && (
+                      <button className="w-full py-3 bg-gradient-to-r from-sky-500 to-indigo-600 text-white rounded-xl font-bold text-sm">
+                        Investir dans ce projet
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── RAPPORTS ── */}
+        {tab === "rapports" && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-black text-stone-900">Mes rapports</h2>
+            <div className="grid grid-cols-3 gap-2">
+              {[{ l:"Investi",    v:"80 000 F" },{ l:"Rendements", v:"9 000 F" },{ l:"ROI",v:"+11.2%" }].map((s,i)=>(
+                <div key={i} className="bg-white rounded-2xl p-3 border border-stone-100 shadow-sm text-center">
+                  <div className="font-black text-stone-900 text-base">{s.v}</div>
+                  <div className="text-[10px] text-stone-500 mt-0.5">{s.l}</div>
+                </div>
+              ))}
+            </div>
+            <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4">
+              <div className="font-bold text-stone-800 text-sm mb-3">Performance 6 mois</div>
+              <div className="flex items-end gap-1.5 h-24">
+                {[40,55,45,70,65,80].map((h,i)=>(
+                  <div key={i} className="flex-1 bg-gradient-to-t from-sky-500 to-indigo-400 rounded-t-lg opacity-80" style={{ height:`${h}%` }} />
+                ))}
+              </div>
+              <div className="flex justify-between text-[10px] text-stone-400 mt-2">
+                {["Jan","Fév","Mar","Avr","Mai","Jun"].map(m=><span key={m}>{m}</span>)}
+              </div>
+            </div>
+            <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-stone-50 font-bold text-stone-800 text-sm">Documents</div>
+              {[
+                { label:"Rapport S1 2026",           date:"25 juin 2026" },
+                { label:"Relevé de compte — Juin",   date:"28 juin 2026" },
+                { label:"Attestation investissement", date:"01 jan 2026"  },
+              ].map((d,i)=>(
+                <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-stone-50 last:border-0">
+                  <div className="w-9 h-9 bg-sky-50 rounded-xl flex items-center justify-center">
+                    <FileText className="w-4 h-4 text-sky-600" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-stone-800 text-sm">{d.label}</div>
+                    <div className="text-xs text-stone-400">{d.date}</div>
+                  </div>
+                  <button className="text-xs font-bold bg-sky-50 text-sky-600 border border-sky-200 rounded-lg px-2 py-1">PDF</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── PROFIL ── */}
+        {tab === "profil" && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-black text-stone-900">Mon profil</h2>
+            <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-5">
+              <div className="flex items-center gap-4 mb-5">
+                <Avatar name="Diabaté A." size="xl" />
+                <div>
+                  <div className="font-black text-stone-900 text-lg">Diabaté Aminata</div>
+                  <div className="text-sm text-stone-500">Investisseur · Bouaké</div>
+                  <div className="mt-2 inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full px-3 py-1">
+                    <BadgeCheck className="w-3.5 h-3.5" /> Compte vérifié
+                  </div>
+                </div>
+              </div>
+              {[
+                { label:"Email",        value:"d.aminata@email.ci",      icon: Mail   },
+                { label:"Téléphone",    value:"+225 07 12 34 56 78",     icon: Phone  },
+                { label:"Membre depuis",value:"Février 2025",            icon: BadgeCheck },
+                { label:"Région",       value:"Bouaké, Côte d'Ivoire",  icon: MapPin },
+              ].map((r,i)=>{
+                const Icon = r.icon;
+                return (
+                  <div key={i} className="flex items-center gap-3 py-2.5 border-b border-stone-50 last:border-0">
+                    <div className="w-8 h-8 bg-stone-50 rounded-lg flex items-center justify-center">
+                      <Icon className="w-3.5 h-3.5 text-stone-400" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-xs text-stone-400">{r.label}</div>
+                      <div className="font-bold text-stone-800 text-sm">{r.value}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={onLogout}
+              className="w-full flex items-center justify-center gap-2 bg-white border-2 border-rose-100 text-rose-600 py-4 rounded-2xl font-bold text-sm hover:bg-rose-50 transition-colors shadow-sm">
+              <LogOut className="w-4 h-4" /> Se déconnecter
+            </button>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+// ==================== MAIN SHELL ====================
+
 function Shell() {
-  const { user }   = useAuth();
+  const { user } = useAuth();
   const [page, setPage] = useState<AllPages>("home");
   const [pageKey, setPageKey] = useState(0);
 
   if (!user) return <LoginPage />;
 
+  const handleLogout = () => window.location.reload();
+
+  // Role detection via email (demo)
+  const role =
+    (user as any).email?.includes("admin")  ? "admin"  :
+    (user as any).email?.includes("client") ? "client" : "farmer";
+
+  if (role === "admin")  return <AdminSpace  onLogout={handleLogout} />;
+  if (role === "client") return <ClientSpace onLogout={handleLogout} />;
+
+  // ── FARMER ──
   const bottomPages = new Set<string>(["home", "weather", "parcelles", "payments", "identity"]);
   const bottomKey: PageKey = (bottomPages.has(page) ? page : "home") as PageKey;
-
   const navigate = (p: string) => { setPage(p as AllPages); setPageKey((k) => k + 1); };
   const goHome   = () => navigate("home");
 
@@ -1454,19 +2037,19 @@ function Shell() {
       case "entrepots":   return <EntrepotsPage />;
       case "recyclage":   return <RecyclagePage />;
       case "carbon":      return <CarbonPage />;
-      case "identity":    return <IdentityPage />;
+      case "identity":    return <IdentityPage onLogout={handleLogout} />;
       case "payments":    return <PaymentsPage />;
       default:            return <Dashboard onNavigate={navigate} />;
     }
   };
 
   return (
-    <div className="min-h-screen max-w-xl mx-auto relative shadow-2xl bg-gradient-to-b from-amber-50/40 to-emerald-50/40">
+    <div className="min-h-screen max-w-xl mx-auto relative shadow-2xl bg-stone-50">
       <TopBar
         title={PAGE_TITLES[page]}
         onBack={page !== "home" ? goHome : undefined}
         userName={user.name}
-        onLogout={() => window.location.reload()}
+        onLogout={handleLogout}
       />
       <main key={pageKey} className="pb-20 animate-fade-in">{render()}</main>
       <BottomNav current={bottomKey} onChange={navigate} />
