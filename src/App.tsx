@@ -1167,7 +1167,7 @@ function CarbonPage() {
   );
 }
 
-// ==================== MODULE MÉTÉO ====================
+// ==================== MODULE MÉTÉO du champs ====================
 
 function WeatherPage() {
   const { lang, userVillage } = useApp();
