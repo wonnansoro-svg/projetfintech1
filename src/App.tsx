@@ -257,6 +257,7 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
     { emoji: "📜", label: "Certificat",       sub: "Numérique",  color: "teal",    page: "certificate" },
     // Ligne 5 — Collectivité & Finance
     { emoji: "🏛️", label: "COOPAVEC",         sub: "Coopérative",color: "indigo",  page: "coopavec" },
+    { emoji: "🛒", label: "Marketplace",      sub: "Commandes",  color: "orange",  page: "marketplace" },
     { emoji: "🌱", label: "Fin. Participatif",sub: "Investisseurs",color:"lime",   page: "crowdfund" },
     // Ligne 6 — Logistique
     { emoji: "🚜", label: "Collecte",         sub: "Récolte",    color: "brown",   page: "collecte" },
@@ -353,7 +354,7 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
       {/* Section: Coopérative */}
       <p className="text-[11px] font-black text-stone-400 uppercase tracking-widest mb-2">Coopérative & Marché</p>
       <div className="grid grid-cols-2 gap-2.5 mb-4">
-        {modules.slice(8,12).map(m => (
+        {modules.slice(8,13).map(m => (
           <Tile key={m.page} emoji={m.emoji} label={m.label} sub={m.sub} color={m.color}
             onClick={() => onNavigate(m.page)} badge={(m as any).badge} />
         ))}
@@ -362,7 +363,7 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
       {/* Section: Durabilité */}
       <p className="text-[11px] font-black text-stone-400 uppercase tracking-widest mb-2">Durabilité</p>
       <div className="grid grid-cols-2 gap-2.5 mb-6">
-        {modules.slice(12,14).map(m => (
+        {modules.slice(13,15).map(m => (
           <Tile key={m.page} emoji={m.emoji} label={m.label} sub={m.sub} color={m.color}
             onClick={() => onNavigate(m.page)} badge={(m as any).badge} />
         ))}
@@ -432,16 +433,70 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
 
       {tab === "kyc" && (
         <div className="space-y-4">
+          {/* Parcours d'enrôlement SOP-01 */}
+          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2"><User className="w-5 h-5 text-orange-500" /><span className="font-black text-stone-800">Parcours d'enrôlement</span></div>
+              <span className="text-xs font-black text-orange-600">7/9</span>
+            </div>
+            {[
+              { label: "Identification & sensibilisation",     resp: "Agent de terrain",   done: true },
+              { label: "Collecte informations & coordonnées",  resp: "Agent de terrain",   done: true },
+              { label: "Vérification pièce d'identité",        resp: "Agent de terrain",   done: true },
+              { label: "Saisie CRM & création profil",         resp: "Resp. Données",      done: true },
+              { label: "Validation KYC back-office (BCEAO)",   resp: "Compliance",         done: true },
+              { label: "Activation compte mobile",             resp: "Service Technique",  done: true },
+              { label: "Formation rapide à l'application",     resp: "Agent de terrain",   done: true },
+              { label: "Signature CGU & consentement RGPD",     resp: "Utilisateur",        done: false },
+              { label: "Suivi J+7 · 1ère transaction",          resp: "Resp. Commercial",   done: false },
+            ].map((s, i) => (
+              <div key={i} className="flex items-center gap-3 py-2 border-b border-stone-50 last:border-0">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${s.done ? "bg-emerald-500" : "bg-stone-200"}`}>
+                  {s.done ? <CheckCircle2 className="w-3.5 h-3.5 text-white" /> : <div className="w-2 h-2 bg-stone-400 rounded-full" />}
+                </div>
+                <div className="flex-1">
+                  <div className={`text-sm font-bold ${s.done ? "text-stone-800" : "text-stone-400"}`}>{s.label}</div>
+                  <div className="text-[10px] text-stone-400">{s.resp}</div>
+                </div>
+              </div>
+            ))}
+            <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
+              Il reste 2 étapes avant l'activation complète : signez vos CGU et effectuez votre première transaction avant le <span className="font-black">J+7</span>.
+            </div>
+          </div>
+
           <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
             <div className="flex items-center gap-2 mb-3"><User className="w-5 h-5 text-orange-500" /><span className="font-black text-stone-800">Pièce d'identité</span></div>
             <div className="bg-stone-50 rounded-xl p-6 text-center border-2 border-dashed border-stone-300">
               <Camera className="w-10 h-10 text-stone-400 mx-auto mb-2" />
               <div className="text-sm text-stone-500 font-medium">Photo CNI / Passeport</div>
               <div className="mt-2 inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full px-3 py-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Validée
+                <CheckCircle2 className="w-3.5 h-3.5" /> Validée — Niveau KYC 1
               </div>
             </div>
           </div>
+
+          {/* Plafonds réglementaires BCEAO liés au niveau KYC */}
+          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+            <div className="flex items-center gap-2 mb-3"><Shield className="w-5 h-5 text-orange-500" /><span className="font-black text-stone-800">Plafonds selon niveau KYC</span></div>
+            <div className="space-y-2">
+              {[
+                { level: "Niveau 1 (actuel)", tx: "100 000 F", month: "500 000 F", solde: "300 000 F", active: true },
+                { level: "Niveau 2",           tx: "500 000 F", month: "2 000 000 F", solde: "1 500 000 F", active: false },
+              ].map((r, i) => (
+                <div key={i} className={`rounded-xl p-3 border ${r.active ? "bg-orange-50 border-orange-200" : "bg-stone-50 border-stone-200"}`}>
+                  <div className={`text-xs font-black mb-1 ${r.active ? "text-orange-700" : "text-stone-500"}`}>{r.level}</div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div><div className="text-[10px] text-stone-500">Par transaction</div><div className="font-bold text-stone-800 text-xs">{r.tx}</div></div>
+                    <div><div className="text-[10px] text-stone-500">Par mois</div><div className="font-bold text-stone-800 text-xs">{r.month}</div></div>
+                    <div><div className="text-[10px] text-stone-500">Solde max</div><div className="font-bold text-stone-800 text-xs">{r.solde}</div></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button className="mt-3 w-full py-2.5 bg-stone-100 text-stone-700 rounded-xl font-bold text-sm">Demander le passage au Niveau 2</button>
+          </div>
+
           <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
             <div className="flex items-center gap-2 mb-3"><QrCode className="w-5 h-5 text-orange-500" /><span className="font-black text-stone-800">QR Code de vérification</span></div>
             <div className="flex justify-center">
@@ -602,7 +657,7 @@ function CreditPage() {
   const { lang, creditAmount, addTx, pushToast } = useApp();
   const [request, setRequest] = useState(25000);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [tab, setTab] = useState<"credit" | "invest">("credit");
+  const [tab, setTab] = useState<"credit" | "invest" | "remboursement">("credit");
 
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
@@ -617,12 +672,12 @@ function CreditPage() {
       </div>
 
       <div className="flex gap-2 mb-4">
-        {(["credit", "invest"] as const).map(t => (
+        {(["credit", "remboursement", "invest"] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
               tab === t ? "bg-violet-600 text-white shadow" : "bg-white border border-stone-200 text-stone-600"
             }`}>
-            {t === "credit" ? "💳 Crédit" : "🌱 Investisseurs"}
+            {t === "credit" ? "💳 Crédit" : t === "remboursement" ? "📆 Remboursement" : "🌱 Investisseurs"}
           </button>
         ))}
       </div>
@@ -650,6 +705,61 @@ function CreditPage() {
           }`}>
             {showSuccess ? "✓ Accordé !" : "Soumettre la demande"}
           </button>
+        </div>
+      )}
+
+      {tab === "remboursement" && (
+        <div className="space-y-3">
+          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <div className="font-black text-stone-800">Statut de votre créance</div>
+              <span className="text-xs font-black bg-amber-100 text-amber-700 rounded-full px-3 py-1">En souffrance · 12 j</span>
+            </div>
+            <div className="text-xs text-stone-500 mb-3">Prochaine échéance : 100 000 F, initialement due le 25/06/2026.</div>
+            <div className="grid grid-cols-3 gap-2 text-center mb-1">
+              <div className="bg-stone-50 rounded-xl p-2 border border-stone-200"><div className="text-[10px] text-stone-500">Courant</div><div className="w-2 h-2 rounded-full bg-stone-300 mx-auto mt-1" /></div>
+              <div className="bg-amber-50 rounded-xl p-2 border-2 border-amber-400"><div className="text-[10px] font-black text-amber-700">En souffrance</div><div className="w-2 h-2 rounded-full bg-amber-500 mx-auto mt-1" /></div>
+              <div className="bg-stone-50 rounded-xl p-2 border border-stone-200"><div className="text-[10px] text-stone-500">Douteux</div><div className="w-2 h-2 rounded-full bg-stone-300 mx-auto mt-1" /></div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+            <div className="font-black text-stone-800 mb-3">Échéancier</div>
+            {[
+              { label: "Échéance 1", amount: "100 000 F", date: "25/03/2026", status: "Payée",      color: "text-emerald-600" },
+              { label: "Échéance 2", amount: "100 000 F", date: "25/04/2026", status: "Payée",      color: "text-emerald-600" },
+              { label: "Échéance 3", amount: "100 000 F", date: "25/05/2026", status: "Payée",      color: "text-emerald-600" },
+              { label: "Échéance 4", amount: "100 000 F", date: "25/06/2026", status: "En retard",  color: "text-amber-600" },
+              { label: "Échéance 5", amount: "100 000 F", date: "25/07/2026", status: "À venir",    color: "text-stone-400" },
+            ].map((e, i) => (
+              <div key={i} className="flex items-center justify-between py-2.5 border-b border-stone-100 last:border-0">
+                <div><div className="font-bold text-stone-800 text-sm">{e.label}</div><div className="text-xs text-stone-400">{e.date}</div></div>
+                <div className="text-right"><div className="font-black text-stone-800 text-sm">{e.amount}</div><div className={`text-xs font-bold ${e.color}`}>{e.status}</div></div>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+            <div className="font-black text-stone-800 mb-3">Relances</div>
+            {[
+              { label: "Rappel préventif J-5",  done: true },
+              { label: "Notification à échéance (J0)", done: true },
+              { label: "1ère relance amiable (J+7)",   done: true },
+              { label: "2ème relance / visite terrain (J+15)", done: false },
+              { label: "Proposition de rééchelonnement (J+21)", done: false },
+            ].map((r, i) => (
+              <div key={i} className="flex items-center gap-3 py-2 border-b border-stone-50 last:border-0">
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${r.done ? "bg-emerald-500" : "bg-stone-200"}`}>
+                  {r.done ? <CheckCircle2 className="w-3 h-3 text-white" /> : <div className="w-1.5 h-1.5 bg-stone-400 rounded-full" />}
+                </div>
+                <div className={`text-sm ${r.done ? "text-stone-800 font-semibold" : "text-stone-400"}`}>{r.label}</div>
+              </div>
+            ))}
+            <button onClick={() => pushToast({ tone: "info", title: "Demande envoyée", message: "Votre demande de rééchelonnement a été transmise." })}
+              className="mt-3 w-full py-3 bg-amber-500 text-white rounded-xl font-bold text-sm">
+              Demander un rééchelonnement
+            </button>
+          </div>
         </div>
       )}
 
@@ -945,6 +1055,132 @@ function CoopavecPage() {
   );
 }
 
+// ==================== MODULE : MARKETPLACE AGRICOLE (SOP-02) ====================
+
+function MarketplacePage() {
+  const { pushToast } = useApp();
+  const [tab, setTab] = useState<"offres" | "commande" | "suivi">("offres");
+  const [qty, setQty]     = useState(500);
+  const [price, setPrice] = useState(350);
+  const [published, setPublished] = useState(false);
+
+  const orderSteps = [
+    { label: "Offre publiée & validée",         sub: "Contrôle qualité back-office", done: true,  time: "01/07 09:00" },
+    { label: "Commande passée par l'acheteur",  sub: "Bon de commande digital",      done: true,  time: "02/07 14:20" },
+    { label: "Confirmation automatique",        sub: "Notif. vendeur + logisticien", done: true,  time: "02/07 14:21" },
+    { label: "Préparation de la marchandise",   sub: "Conditionnement",              done: true,  time: "03/07 08:00" },
+    { label: "Collecte par le logisticien",     sub: "Bon de collecte + pesée",      done: false, time: "04/07 (prévu)" },
+    { label: "Contrôle qualité à la collecte",  sub: "Fiche contrôle qualité",       done: false, time: "—" },
+    { label: "Livraison à l'acheteur",          sub: "Bon de livraison signé",       done: false, time: "—" },
+    { label: "Confirmation réception",          sub: "Accusé de réception digital",  done: false, time: "—" },
+    { label: "Paiement vendeur déclenché",      sub: "Agrifinance Pay · J3–J5",       done: false, time: "—" },
+  ];
+  const doneCount = orderSteps.filter(s => s.done).length;
+
+  return (
+    <div className="p-4 pb-24 max-w-xl mx-auto">
+      <div className="animate-fade-up relative bg-gradient-to-br from-orange-500 via-amber-600 to-yellow-700 text-white rounded-3xl p-5 shadow-xl mb-4">
+        <div className="flex items-center gap-2 mb-2"><Package className="w-6 h-6" /><div className="font-black text-lg">Marketplace Agricole</div></div>
+        <p className="text-sm opacity-90">Publiez vos récoltes, suivez vos commandes jusqu'au paiement.</p>
+        <div className="grid grid-cols-3 gap-2 mt-3">
+          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-[10px] opacity-80">Délai moyen</div><div className="font-black text-sm">≤ 3 j</div></div>
+          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-[10px] opacity-80">Livrées à temps</div><div className="font-black text-sm">≥ 90%</div></div>
+          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-[10px] opacity-80">Litiges</div><div className="font-black text-sm">≤ 5%</div></div>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        {(["offres", "commande", "suivi"] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+              tab === t ? "bg-orange-500 text-white shadow" : "bg-white border border-stone-200 text-stone-600"
+            }`}>
+            {t === "offres" ? "📢 Publier" : t === "commande" ? "🧾 Commandes" : "📍 Suivi"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "offres" && (
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm space-y-3">
+          <div className="font-black text-stone-800">Publier une offre</div>
+          <div className="text-xs text-stone-500 -mt-2">Validée par le back-office marketplace avant mise en ligne (contrôle qualité & conformité).</div>
+          <div>
+            <div className="text-xs font-bold text-stone-600 mb-1.5">Quantité disponible (kg)</div>
+            <div className="grid grid-cols-4 gap-2">
+              {[100, 500, 1000, 2000].map(v => (
+                <button key={v} onClick={() => setQty(v)} className={`py-2.5 rounded-xl text-xs font-black transition-all ${
+                  qty === v ? "bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-md scale-105" : "bg-stone-100 text-stone-700"
+                }`}>{v} kg</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs font-bold text-stone-600 mb-1.5">Prix par kg (FCFA)</div>
+            <div className="grid grid-cols-4 gap-2">
+              {[250, 350, 500, 700].map(v => (
+                <button key={v} onClick={() => setPrice(v)} className={`py-2.5 rounded-xl text-xs font-black transition-all ${
+                  price === v ? "bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-md scale-105" : "bg-stone-100 text-stone-700"
+                }`}>{v} F</button>
+              ))}
+            </div>
+          </div>
+          <div className="bg-orange-50 rounded-xl p-3 text-center border border-orange-100">
+            <div className="text-xs text-stone-500 font-semibold">Valeur totale estimée</div>
+            <Money value={qty * price} size="md" />
+          </div>
+          <button onClick={() => {
+            setPublished(true);
+            pushToast({ tone: "success", title: "Offre soumise !", message: "En attente de validation back-office (J0→J1)" });
+          }} disabled={published} className={`w-full py-4 rounded-2xl font-black text-white transition-all ${
+            published ? "bg-emerald-500" : "bg-gradient-to-br from-orange-500 to-amber-600"
+          }`}>
+            {published ? "✓ Offre soumise" : "Publier l'offre"}
+          </button>
+        </div>
+      )}
+
+      {tab === "commande" && (
+        <div className="space-y-3">
+          {[
+            { buyer: "Transformateur ANACOOP", item: "Anacarde Grade A", qty: "1 200 kg", status: "Confirmée", color: "bg-emerald-100 text-emerald-700" },
+            { buyer: "Revendeur Marché Bouaké", item: "Maïs sec",        qty: "800 kg",   status: "En préparation", color: "bg-amber-100 text-amber-700" },
+            { buyer: "Restaurateur Abidjan",    item: "Manioc frais",    qty: "300 kg",   status: "Livrée", color: "bg-sky-100 text-sky-700" },
+          ].map((o, i) => (
+            <div key={i} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+              <div className="flex items-start justify-between mb-1">
+                <div className="font-black text-stone-800 text-sm">{o.buyer}</div>
+                <span className={`text-[10px] font-black rounded-full px-2 py-1 ${o.color}`}>{o.status}</span>
+              </div>
+              <div className="text-xs text-stone-500">{o.item} · {o.qty}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "suivi" && (
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-black text-stone-800">Cycle de la commande</div>
+            <span className="text-xs font-black text-orange-600">{doneCount}/{orderSteps.length}</span>
+          </div>
+          {orderSteps.map((s, i) => (
+            <div key={i} className="flex items-start gap-3 py-2.5 border-b border-stone-100 last:border-0">
+              <div className={`w-6 h-6 mt-0.5 rounded-full flex items-center justify-center flex-shrink-0 ${s.done ? "bg-emerald-500" : "bg-stone-200"}`}>
+                {s.done ? <CheckCircle2 className="w-4 h-4 text-white" /> : <div className="w-2 h-2 bg-stone-400 rounded-full" />}
+              </div>
+              <div className="flex-1">
+                <div className={`text-sm font-bold ${s.done ? "text-stone-800" : "text-stone-400"}`}>{s.label}</div>
+                <div className="text-xs text-stone-400">{s.sub}</div>
+              </div>
+              <div className="text-xs text-stone-400 font-medium whitespace-nowrap">{s.time}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ==================== MODULE 12 : COLLECTE AGRICOLE ====================
 
 function CollectePage() {
@@ -1001,22 +1237,40 @@ function CollectePage() {
       )}
 
       {step === "track" && (
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-          <div className="font-black text-stone-800 mb-3">Suivi en temps réel</div>
-          {[
-            { label: "Récolte déclarée",    done: true,  time: "28/06 09:00" },
-            { label: "Transporteur affecté", done: true,  time: "28/06 10:30" },
-            { label: "En cours de collecte", done: false, time: "30/06 08:00" },
-            { label: "Réception entrepôt",   done: false, time: "—" },
-          ].map((s_, i) => (
-            <div key={i} className="flex items-center gap-3 py-2.5 border-b border-stone-100 last:border-0">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${s_.done ? "bg-emerald-500" : "bg-stone-200"}`}>
-                {s_.done ? <CheckCircle2 className="w-4 h-4 text-white" /> : <div className="w-2 h-2 bg-stone-400 rounded-full" />}
+        <div className="space-y-3">
+          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+            <div className="font-black text-stone-800 mb-3">Suivi en temps réel</div>
+            {[
+              { label: "Récolte déclarée",    done: true,  time: "28/06 09:00" },
+              { label: "Transporteur affecté", done: true,  time: "28/06 10:30" },
+              { label: "En cours de collecte", done: false, time: "30/06 08:00" },
+              { label: "Contrôle qualité (pesée)", done: false, time: "—" },
+              { label: "Réception entrepôt · lot QR généré", done: false, time: "—" },
+            ].map((s_, i) => (
+              <div key={i} className="flex items-center gap-3 py-2.5 border-b border-stone-100 last:border-0">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${s_.done ? "bg-emerald-500" : "bg-stone-200"}`}>
+                  {s_.done ? <CheckCircle2 className="w-4 h-4 text-white" /> : <div className="w-2 h-2 bg-stone-400 rounded-full" />}
+                </div>
+                <div className="flex-1"><div className={`text-sm font-bold ${s_.done ? "text-stone-800" : "text-stone-400"}`}>{s_.label}</div></div>
+                <div className="text-xs text-stone-400 font-medium">{s_.time}</div>
               </div>
-              <div className="flex-1"><div className={`text-sm font-bold ${s_.done ? "text-stone-800" : "text-stone-400"}`}>{s_.label}</div></div>
-              <div className="text-xs text-stone-400 font-medium">{s_.time}</div>
+            ))}
+          </div>
+          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+            <div className="flex items-center gap-2 mb-3"><QrCode className="w-5 h-5 text-amber-700" /><span className="font-black text-stone-800">Traçabilité du lot</span></div>
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 bg-white border-4 border-stone-800 rounded-xl grid grid-cols-6 gap-0.5 p-1.5 flex-shrink-0">
+                {Array.from({ length: 36 }).map((_, i) => (
+                  <div key={i} className={((i * 5 + 2) % 3 === 0) || (i < 6 || (i % 6 === 0) || (i > 29)) ? "bg-stone-900 rounded-sm" : "bg-white"} />
+                ))}
+              </div>
+              <div className="flex-1 text-xs space-y-1">
+                <div><span className="text-stone-400">Code lot :</span> <span className="font-mono font-bold text-stone-800">LOT-CI-260630-0842</span></div>
+                <div><span className="text-stone-400">Rotation :</span> <span className="font-bold text-stone-800">FIFO</span></div>
+                <div><span className="text-stone-400">Statut :</span> <span className="font-bold text-emerald-700">En attente réception</span></div>
+              </div>
             </div>
-          ))}
+          </div>
         </div>
       )}
     </div>
@@ -1050,17 +1304,23 @@ function EntrepotsPage() {
       </div>
 
       {/* Inventaire */}
-      <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-        <div className="font-black text-stone-800 mb-3">📋 Inventaire actuel</div>
+      <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="font-black text-stone-800">📋 Inventaire actuel</div>
+          <span className="text-[10px] font-black bg-cyan-100 text-cyan-700 rounded-full px-2 py-1">Rotation FIFO</span>
+        </div>
         {[
-          { produit: "Anacarde brut",    qte: "2 400 kg", lot: "L-2026-06", statut: "Bon" },
-          { produit: "Maïs grain",       qte: "1 620 kg", lot: "L-2026-05", statut: "Bon" },
-          { produit: "Cacao sec",        qte: "800 kg",   lot: "L-2026-04", statut: "Contrôle" },
+          { produit: "Anacarde brut",    qte: "2 400 kg", lot: "L-2026-06", statut: "Bon",      qr: true,  entree: "12/06" },
+          { produit: "Maïs grain",       qte: "1 620 kg", lot: "L-2026-05", statut: "Bon",      qr: true,  entree: "28/05" },
+          { produit: "Cacao sec",        qte: "800 kg",   lot: "L-2026-04", statut: "Contrôle", qr: true,  entree: "14/05" },
         ].map((item, i) => (
           <div key={i} className="flex items-center justify-between py-2.5 border-b border-stone-100 last:border-0">
-            <div>
-              <div className="font-bold text-stone-800 text-sm">{item.produit}</div>
-              <div className="text-xs text-stone-500">Lot {item.lot}</div>
+            <div className="flex items-center gap-2">
+              {item.qr && <QrCode className="w-4 h-4 text-stone-400 flex-shrink-0" />}
+              <div>
+                <div className="font-bold text-stone-800 text-sm">{item.produit}</div>
+                <div className="text-xs text-stone-500">Lot {item.lot} · entrée {item.entree}</div>
+              </div>
             </div>
             <div className="text-right">
               <div className="font-black text-stone-800 text-sm">{item.qte}</div>
@@ -1068,6 +1328,7 @@ function EntrepotsPage() {
             </div>
           </div>
         ))}
+        <div className="mt-3 text-[11px] text-stone-400">Sortie prioritaire : le lot le plus ancien (L-2026-04, entré le 14/05) sort en premier selon la règle FIFO.</div>
       </div>
     </div>
   );
@@ -1209,6 +1470,9 @@ function PaymentsPage() {
   const [amount, setAmount] = useState(5000);
   const [operator, setOperator] = useState("wave");
   const [sent, setSent]     = useState(false);
+  const [otpStage, setOtpStage] = useState<"idle" | "sent" | "verified">("idle");
+  const [otpValue, setOtpValue] = useState("");
+  const [otpError, setOtpError] = useState("");
 
   const operators = [
     { id: "wave",   label: "Wave",         color: "bg-blue-500" },
@@ -1217,11 +1481,37 @@ function PaymentsPage() {
     { id: "moov",   label: "Moov Money",   color: "bg-green-500" },
   ];
 
+  // Plafonds réglementaires BCEAO — Compte de base (KYC niveau 1)
+  const PLAFOND_TX = 100000;
+  const PLAFOND_MOIS = 500000;
+  const depenseMois = 185000; // simulateur — cumul du mois en cours
+  const overLimit = amount > PLAFOND_TX;
+
+  const requestOtp = () => {
+    if (!phone || amount <= 0 || overLimit) return;
+    setOtpStage("sent");
+    setOtpError("");
+    pushToast({ tone: "info", title: "Code OTP envoyé", message: `SMS envoyé au ${phone || "numéro associé"}` });
+  };
+
+  const verifyOtp = () => {
+    if (otpValue.trim().length < 4) { setOtpError("Code OTP invalide (4 chiffres minimum)."); return; }
+    setOtpStage("verified");
+    addTx({ type: mode === "send" ? "send" : "receive", amount, label: mode === "send" ? `→ ${phone} (${operator.toUpperCase()})` : `← ${phone}` });
+    pushToast({ tone: "success", title: mode === "send" ? "Envoi réussi ✓" : "Réception confirmée ✓", message: `${amount.toLocaleString("fr-FR")} F` });
+    setSent(true);
+    setTimeout(() => { setSent(false); setOtpStage("idle"); setOtpValue(""); }, 2200);
+  };
+
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-indigo-600 to-violet-700 text-white rounded-3xl p-5 shadow-xl mb-4">
         <div className="text-xs opacity-90 font-semibold">💚 Solde disponible</div>
         <Money value={balance} size="lg" />
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-[10px] opacity-80">Plafond / transaction</div><div className="font-black text-sm">{PLAFOND_TX.toLocaleString("fr-FR")} F</div></div>
+          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-[10px] opacity-80">Utilisé ce mois</div><div className="font-black text-sm">{depenseMois.toLocaleString("fr-FR")} / {PLAFOND_MOIS.toLocaleString("fr-FR")} F</div></div>
+        </div>
       </div>
 
       {/* Opérateurs */}
@@ -1265,18 +1555,37 @@ function PaymentsPage() {
           <Money value={amount} size="md" />
         </div>
 
-        <button onClick={() => {
-          if (phone && amount > 0) {
-            addTx({ type: mode === "send" ? "send" : "receive", amount, label: mode === "send" ? `→ ${phone} (${operator.toUpperCase()})` : `← ${phone}` });
-            pushToast({ tone: "success", title: mode === "send" ? "Envoi réussi ✓" : "Réception confirmée ✓", message: `${amount.toLocaleString("fr-FR")} F` });
-            setSent(true);
-            setTimeout(() => setSent(false), 2200);
-          }
-        }} disabled={sent} className={`w-full py-4 rounded-2xl font-black text-white text-lg shadow-lg flex items-center justify-center gap-2 ${
-          sent ? "bg-emerald-500" : mode === "send" ? "bg-gradient-to-br from-rose-500 to-pink-600" : "bg-gradient-to-br from-emerald-500 to-green-600"
-        }`}>
-          {sent ? <><CheckCircle2 className="w-5 h-5" /> Confirmé ✓</> : <>Confirmer ✓</>}
-        </button>
+        {overLimit && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl p-3 mb-3 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" /> Montant supérieur au plafond par transaction (Niveau KYC 1 : {PLAFOND_TX.toLocaleString("fr-FR")} F).
+          </div>
+        )}
+
+        {otpStage === "idle" && (
+          <button onClick={requestOtp} disabled={overLimit || !phone || amount <= 0}
+            className={`w-full py-4 rounded-2xl font-black text-white text-lg shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 ${
+              mode === "send" ? "bg-gradient-to-br from-rose-500 to-pink-600" : "bg-gradient-to-br from-emerald-500 to-green-600"
+            }`}>
+            Confirmer ✓
+          </button>
+        )}
+
+        {otpStage === "sent" && (
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
+            <div className="text-xs font-black text-indigo-800 mb-2">Saisissez le code OTP reçu par SMS</div>
+            <input type="tel" inputMode="numeric" maxLength={6} value={otpValue}
+              onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ""))}
+              placeholder="• • • •" className="w-full text-center tracking-[0.5em] font-black text-xl bg-white border border-indigo-200 rounded-xl py-2.5 mb-2 outline-none" />
+            {otpError && <div className="text-xs text-rose-600 font-bold mb-2">{otpError}</div>}
+            <button onClick={verifyOtp} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black">Valider le code</button>
+          </div>
+        )}
+
+        {sent && (
+          <div className="w-full py-4 rounded-2xl font-black text-white text-lg shadow-lg flex items-center justify-center gap-2 bg-emerald-500">
+            <CheckCircle2 className="w-5 h-5" /> Confirmé ✓
+          </div>
+        )}
       </div>
 
       {/* Historique */}
@@ -1454,7 +1763,7 @@ type AllPages =
   | PageKey
   | "susu" | "credit" | "insurance" | "agriprotect" | "losses"
   | "certificate" | "coopavec" | "crowdfund" | "collecte"
-  | "entrepots" | "recyclage" | "carbon";
+  | "entrepots" | "recyclage" | "carbon" | "marketplace";
 
 const PAGE_TITLES: Record<string, string> = {
   home:        "COOPAVEC",
@@ -1474,6 +1783,7 @@ const PAGE_TITLES: Record<string, string> = {
   carbon:      "Crédits Carbone",
   identity:    "Mon ID Agricole",
   payments:    "Paiements Mobile",
+  marketplace: "Marketplace Agricole",
 };
 
 // ==================== ADMIN SPACE ====================
@@ -2032,6 +2342,7 @@ function Shell() {
       case "losses":      return <LossesPage />;
       case "certificate": return <CertificatePage />;
       case "coopavec":    return <CoopavecPage />;
+      case "marketplace": return <MarketplacePage />;
       case "crowdfund":   return <CrowdfundPage />;
       case "collecte":    return <CollectePage />;
       case "entrepots":   return <EntrepotsPage />;
