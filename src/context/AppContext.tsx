@@ -14,7 +14,7 @@ export interface Parcel {
   id: string;
   name: string;
   hectares: number;
-  crop: "maize" | "millet" | "rice";
+  crop: "maize" | "millet" | "rice" | "anacarde" | "cacao" | "manioc";
   gps: { lat: number; lng: number } | null;
 }
 
@@ -46,6 +46,7 @@ interface AppState {
   susuMembers: SusuMember[];
   nextPayoutDays: number;
   parcels: Parcel[];
+  addParcel: (p: Omit<Parcel, "id">) => void;
   transactions: Tx[];
   carbonCredits: number;
   co2Saved: number;
@@ -87,11 +88,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     { name: "Ousmane", amount: 5000, paid: false, avatarColor: "#f59e0b" },
   ]);
   const nextPayoutDays = 4;
-  const [parcels] = useState<Parcel[]>([
+  const [parcels, setParcels] = useState<Parcel[]>([
     { id: "p1", name: "Parcelle Nord", hectares: 1.2, crop: "maize", gps: { lat: 14.6937, lng: -17.4441 } },
     { id: "p2", name: "Parcelle Rivière", hectares: 0.8, crop: "rice", gps: { lat: 14.7012, lng: -17.4500 } },
     { id: "p3", name: "Parcelle Sud", hectares: 0.5, crop: "millet", gps: null },
   ]);
+  const addParcel = (p: Omit<Parcel, "id">) => {
+    setParcels((prev) => [...prev, { ...p, id: "p" + Date.now() }]);
+  };
   const [transactions, setTransactions] = useState<Tx[]>([
     { id: "t1", type: "deposit", amount: 5000, date: "2026-01-15", label: "Tontine — semaine 3" },
     { id: "t2", type: "receive", amount: 30000, date: "2026-01-08", label: "Mon tour de tontine" },
@@ -164,7 +168,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       value={{
         lang, setLang, online, userName, userVillage,
         balance, setBalance, savingsGoal, weeklySaved,
-        susuMembers, nextPayoutDays, parcels, transactions, carbonCredits, co2Saved,
+        susuMembers, nextPayoutDays, parcels, addParcel, transactions, carbonCredits, co2Saved,
         insuranceTriggered, creditAmount, creditDueDays, identity, addTx,
         pushToast, toasts, weather, weatherForecast, currentLocation, loadWeather,
       }}
