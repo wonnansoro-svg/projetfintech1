@@ -1,16 +1,8 @@
 import { useState } from "react";
 import { X, User, Phone, MapPin, Building2, Loader, CheckCircle2, AlertCircle, Copy } from "lucide-react";
 import { createProfileAsAdmin, type AdminCreatedAccount } from "../services/profileService";
+import { CROPS } from "../lib/crops";
 import type { Crop, Role } from "../types/firestore";
-
-const CROPS: { key: Crop; label: string; emoji: string }[] = [
-  { key: "maize", label: "Maïs", emoji: "🌽" },
-  { key: "millet", label: "Mil", emoji: "🌾" },
-  { key: "rice", label: "Riz", emoji: "🍚" },
-  { key: "anacarde", label: "Anacarde", emoji: "🥜" },
-  { key: "cacao", label: "Cacao", emoji: "🍫" },
-  { key: "manioc", label: "Manioc", emoji: "🥔" },
-];
 
 export default function AddBeneficiaryForm({ onClose, onDone }: {
   onClose: () => void; onDone: () => void;
@@ -147,8 +139,8 @@ export default function AddBeneficiaryForm({ onClose, onDone }: {
 
             <div>
               <label className="block text-sm font-semibold text-stone-700 mb-1.5">Rôle</label>
-              <div className="grid grid-cols-2 gap-2">
-                {([["farmer", "🌾 Agriculteur"], ["investor", "🏢 Investisseur"]] as const).map(([r, l]) => (
+              <div className="grid grid-cols-3 gap-2">
+                {([["farmer", "🌾 Agriculteur"], ["investor", "🏢 Investisseur"], ["agent", "🧑‍🌾 Agent terrain"]] as const).map(([r, l]) => (
                   <button key={r} type="button" onClick={() => setRole(r)}
                     className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
                       role === r ? "bg-violet-600 text-white border-violet-600" : "bg-stone-50 text-stone-600 border-stone-200"

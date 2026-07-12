@@ -46,7 +46,7 @@ export async function recordContribution(userId: string, amount: number, kind: C
     tx.set(FUND_DOC, { ...fund, totalDeposited: newFundTotal, availableForCredit: Math.max(0, newAvailable), updatedAt: now });
     tx.set(txRef, {
       id: txRef.id, userId, type: "deposit", amount,
-      label: label ?? (kind === "guarantee_fund" ? "Cotisation — Fonds de garantie" : "Cotisation AgriSusu"),
+      label: label ?? (kind === "guarantee_fund" ? "Cotisation — Fonds de garantie" : "Cotisation Bokanmin"),
       relatedContributionId: contributionRef.id, createdAt: now,
     });
   });

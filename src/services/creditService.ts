@@ -4,7 +4,8 @@ import {
 import { db } from "../firebase";
 import { getProfile } from "./profileService";
 import { DEFAULT_GUARANTEE_FUND, DEFAULT_CREDIT_SETTINGS, FUND_DOC, CREDIT_SETTINGS_DOC, getGuaranteeFund, getCreditSettings } from "./fundService";
-import { computeCreditCeiling, isEligibleForCredit, buildRepaymentSchedule } from "../lib/credit";
+import { computeCreditCeiling, computeFinancingScore, isEligibleForCredit, buildRepaymentSchedule } from "../lib/credit";
+import { getUserLossValueFcfa } from "./lossService";
 import { buildNotification } from "./notificationService";
 import type { Credit, CreditSettings, GuaranteeFund, Wallet } from "../types/firestore";
 
@@ -27,15 +28,16 @@ export async function requestCredit(userId: string, requestedAmount: number): Pr
   const profile = await getProfile(userId);
   if (!profile) throw new Error("Profil bénéficiaire introuvable.");
 
-  const [fund, settings, contributionsCount] = await Promise.all([
-    getGuaranteeFund(), getCreditSettings(), countConfirmedContributions(userId),
+  const [fund, settings, contributionsCount, lossValue] = await Promise.all([
+    getGuaranteeFund(), getCreditSettings(), countConfirmedContributions(userId), getUserLossValueFcfa(userId),
   ]);
+  const financingScore = computeFinancingScore(lossValue);
 
   const { ceiling, fundShareCap, regulatoryCap } = computeCreditCeiling({
-    personalContribution12m: wallet?.contributionsLast12m ?? 0, fund, settings, kycStatus: profile.kycStatus,
+    personalContribution12m: wallet?.contributionsLast12m ?? 0, fund, settings, kycStatus: profile.kycStatus, financingScore,
   });
   const { eligible, reason } = isEligibleForCredit({ contributionsCount, ceiling, settings });
-  if (!eligible) throw new Error(reason ?? "Non éligible au crédit pour le moment.");
+  if (!eligible) throw new Error(reason ?? "Non éligible au bon de financement pour le moment.");
 
   const now = Date.now();
   const creditRef = doc(collection(db, CREDITS));
@@ -45,7 +47,7 @@ export async function requestCredit(userId: string, requestedAmount: number): Pr
     calculationSnapshot: {
       personalContribution12m: wallet?.contributionsLast12m ?? 0,
       fundAvailableAtDecision: fund.availableForCredit,
-      fundShareCap, regulatoryCap, kycLevelUsed: profile.kycStatus, ceiling,
+      fundShareCap, regulatoryCap, kycLevelUsed: profile.kycStatus, ceiling, financingScore,
     },
     rejectionReason: null, requestedAt: now, decidedAt: null, decidedBy: null,
   };
@@ -76,7 +78,7 @@ export async function approveCredit(creditId: string, adminUid: string): Promise
 
   await runTransaction(db, async (tx) => {
     const creditSnap = await tx.get(creditRef);
-    if (!creditSnap.exists()) throw new Error("Demande de crédit introuvable.");
+    if (!creditSnap.exists()) throw new Error("Demande de bon de financement introuvable.");
     const credit = creditSnap.data() as Credit;
     if (credit.status !== "pending") throw new Error("Cette demande a déjà été traitée.");
 
@@ -86,16 +88,17 @@ export async function approveCredit(creditId: string, adminUid: string): Promise
     const fund = fundSnap.exists() ? (fundSnap.data() as GuaranteeFund) : DEFAULT_GUARANTEE_FUND;
     const settings = settingsSnap.exists() ? (settingsSnap.data() as CreditSettings) : DEFAULT_CREDIT_SETTINGS;
 
-    const profile = await getProfile(credit.userId);
+    const [profile, lossValue] = await Promise.all([getProfile(credit.userId), getUserLossValueFcfa(credit.userId)]);
+    const financingScore = computeFinancingScore(lossValue);
     const { ceiling, fundShareCap, regulatoryCap } = computeCreditCeiling({
-      personalContribution12m: wallet.contributionsLast12m, fund, settings, kycStatus: profile?.kycStatus ?? "pending",
+      personalContribution12m: wallet.contributionsLast12m, fund, settings, kycStatus: profile?.kycStatus ?? "pending", financingScore,
     });
 
     const approvedAmount = Math.min(credit.requestedAmount, ceiling);
     if (approvedAmount < settings.minLoanAmount) {
       const reason = "Plafond insuffisant au moment de la validation (fonds de garantie trop sollicité).";
       tx.set(creditRef, { ...credit, status: "rejected", rejectionReason: reason, decidedAt: now, decidedBy: adminUid });
-      const notif = buildNotification(credit.userId, "Demande de crédit refusée", reason);
+      const notif = buildNotification(credit.userId, "Demande de bon de financement refusée", reason);
       tx.set(doc(db, NOTIFICATIONS, notif.id), notif);
       return { disbursed: false };
     }
@@ -106,7 +109,7 @@ export async function approveCredit(creditId: string, adminUid: string): Promise
 
     tx.set(creditRef, {
       ...credit, status: "active", approvedAmount, schedule,
-      calculationSnapshot: { personalContribution12m: wallet.contributionsLast12m, fundAvailableAtDecision: fund.availableForCredit, fundShareCap, regulatoryCap, kycLevelUsed: profile?.kycStatus ?? "pending", ceiling },
+      calculationSnapshot: { personalContribution12m: wallet.contributionsLast12m, fundAvailableAtDecision: fund.availableForCredit, fundShareCap, regulatoryCap, kycLevelUsed: profile?.kycStatus ?? "pending", ceiling, financingScore },
       decidedAt: now, decidedBy: adminUid,
     });
     tx.set(walletRef, { ...wallet, balance: wallet.balance + approvedAmount, updatedAt: now });
@@ -115,10 +118,10 @@ export async function approveCredit(creditId: string, adminUid: string): Promise
     const txRef = doc(collection(db, TRANSACTIONS));
     tx.set(txRef, {
       id: txRef.id, userId: credit.userId, type: "credit_disbursement", amount: approvedAmount,
-      label: "Crédit agricole accordé", relatedCreditId: credit.id, createdAt: now,
+      label: "Bon de financement accordé", relatedCreditId: credit.id, createdAt: now,
     });
 
-    const notif = buildNotification(credit.userId, "Crédit accordé 🎉", `Votre crédit de ${approvedAmount.toLocaleString("fr-FR")} F a été validé et versé sur votre solde.`);
+    const notif = buildNotification(credit.userId, "Bon de financement accordé 🎉", `Votre bon de financement de ${approvedAmount.toLocaleString("fr-FR")} F a été validé et versé sur votre solde.`);
     tx.set(doc(db, NOTIFICATIONS, notif.id), notif);
 
     return { disbursed: true };

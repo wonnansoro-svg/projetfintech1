@@ -9,8 +9,8 @@ export function hasSeenOnboarding(): boolean {
 
 const STEPS = [
   { icon: Sprout, color: "bg-green-600", title: "Bienvenue sur COOPAVEC 🌾", text: "Enregistrez vos champs avec leur position GPS réelle, en marchant tout le tour pour mesurer la surface automatiquement." },
-  { icon: User, color: "bg-amber-500", title: "AgriSusu — votre épargne", text: "Cotisez 1 500 FCFA chaque semaine. Cet argent forme un fonds commun déposé en banque, qui sert de garantie pour tous les bénéficiaires." },
-  { icon: CreditCard, color: "bg-violet-600", title: "Crédit agricole", text: "Plus vous cotisez régulièrement, plus votre plafond de crédit augmente. Une fois demandé, un agent de la coopérative valide et débloque le crédit." },
+  { icon: User, color: "bg-amber-500", title: "Bokanmin — votre épargne", text: "Cotisez 1 500 FCFA chaque semaine. Cet argent forme un fonds commun déposé en banque, qui sert de garantie pour tous les bénéficiaires." },
+  { icon: CreditCard, color: "bg-violet-600", title: "Bon de financement participatif", text: "Plus vous cotisez régulièrement, plus votre plafond de financement augmente. Une fois demandé, un agent de la coopérative valide et débloque le financement." },
 ];
 
 export default function OnboardingTour({ onClose }: { onClose: () => void }) {

@@ -2,9 +2,9 @@
 // Les Timestamp Firestore sont représentés en number (millis epoch) côté app
 // pour rester simples à manipuler dans les composants React.
 
-export type Role = "farmer" | "admin" | "investor";
+export type Role = "farmer" | "admin" | "investor" | "agent";
 export type KycStatus = "pending" | "level1" | "level2";
-export type Crop = "maize" | "millet" | "rice" | "anacarde" | "cacao" | "manioc";
+export type Crop = "maize" | "millet" | "rice" | "anacarde" | "cacao" | "manioc" | "vivrier" | "palmier" | "hevea" | "autre";
 
 export interface Profile {
   uid: string;
@@ -122,6 +122,7 @@ export interface CreditCalculationSnapshot {
   regulatoryCap: number;
   kycLevelUsed: KycStatus;
   ceiling: number;
+  financingScore: number;
 }
 
 export interface Credit {
@@ -150,6 +151,8 @@ export interface LossClaim {
   comment: string;
   gps: GeoPointLike | null;
   photoUrls: string[];
+  lossKg: number | null;
+  estimatedValueFcfa: number | null;
   status: "submitted";
   createdAt: number;
 }

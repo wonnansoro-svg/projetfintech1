@@ -7,7 +7,7 @@ export const LANGS: { code: Lang; label: string; flag: string }[] = [
 ];
 
 export const T = {
-  appName:        { fr: "AgriSusu", en: "AgriSusu" },
+  appName:        { fr: "Bokanmin", en: "Bokanmin" },
   online:         { fr: "En ligne", en: "Online" },
   offline:        { fr: "Hors ligne", en: "Offline" },
   worksOffline:   { fr: "Fonctionne même sans internet ✨", en: "Works even without internet ✨" },

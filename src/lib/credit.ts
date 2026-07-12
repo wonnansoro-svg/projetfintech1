@@ -5,6 +5,8 @@ export interface CreditCeilingInput {
   fund: GuaranteeFund;
   settings: CreditSettings;
   kycStatus: KycStatus;
+  /** 0-100, cf. computeFinancingScore — défaut 0 : aucun effet, comportement inchangé. */
+  financingScore?: number;
 }
 
 export interface CreditCeilingResult {
@@ -14,16 +16,30 @@ export interface CreditCeilingResult {
   personalCap: number;
 }
 
+const FINANCING_SCORE_BONUS_RATE = 0.5; // +50 % max du plafond personnel à score = 100
+
 /**
- * Plafond de crédit = min(k × cotisation personnelle, quote-part du fonds
- * de garantie disponible, plafond réglementaire selon le niveau KYC).
+ * Plafond de crédit = min(k × cotisation personnelle (boostée par le score
+ * de financement issu des pertes déclarées), quote-part du fonds de garantie
+ * disponible, plafond réglementaire selon le niveau KYC).
  */
-export function computeCreditCeiling({ personalContribution12m, fund, settings, kycStatus }: CreditCeilingInput): CreditCeilingResult {
-  const personalCap = settings.multiplierK * personalContribution12m;
+export function computeCreditCeiling({ personalContribution12m, fund, settings, kycStatus, financingScore = 0 }: CreditCeilingInput): CreditCeilingResult {
+  const basePersonalCap = settings.multiplierK * personalContribution12m;
+  const clampedScore = Math.max(0, Math.min(100, financingScore));
+  const personalCap = basePersonalCap * (1 + FINANCING_SCORE_BONUS_RATE * (clampedScore / 100));
   const fundShareCap = Math.max(0, settings.maxFundSharePct * fund.availableForCredit);
   const regulatoryCap = settings.regulatoryCapByKyc[kycStatus] ?? 0;
   const ceiling = Math.max(0, Math.min(personalCap, fundShareCap, regulatoryCap));
   return { ceiling, fundShareCap, regulatoryCap, personalCap };
+}
+
+/**
+ * Score de financement (0-100) basé sur la valeur estimée des pertes
+ * déclarées (kg × 100 FCFA/kg — cf. LossesPage). 1 point tous les
+ * 5 000 FCFA de pertes cumulées, plafonné à 100.
+ */
+export function computeFinancingScore(lossValueFcfa: number): number {
+  return Math.max(0, Math.min(100, Math.floor(lossValueFcfa / 5000)));
 }
 
 export interface EligibilityInput {

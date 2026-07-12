@@ -22,10 +22,10 @@ import {
   requestCredit, subscribeToUserCredits, subscribeToPendingCredits,
   approveCredit, rejectCredit, countActiveCredits,
 } from "./services/creditService";
-import { computeCreditCeiling } from "./lib/credit";
+import { computeCreditCeiling, computeFinancingScore } from "./lib/credit";
 import { listProfiles, updateProfile } from "./services/profileService";
 import { uploadKycPhoto, uploadLossPhoto } from "./services/storageService";
-import { submitLossClaim } from "./services/lossService";
+import { submitLossClaim, getUserLossValueFcfa } from "./services/lossService";
 import DocumentPreviewModal from "./components/DocumentPreviewModal";
 import type { PdfDocumentData } from "./lib/pdf";
 import { buildIdentityPayload } from "./lib/qr";
@@ -33,6 +33,7 @@ import { vibrate } from "./lib/haptics";
 import ConfirmButton from "./components/ConfirmButton";
 import { SkeletonList } from "./components/Skeleton";
 import SpeakButton from "./components/SpeakButton";
+import WavePaymentBanner from "./components/WavePaymentBanner";
 import OnboardingTour, { hasSeenOnboarding } from "./components/OnboardingTour";
 import { describeAuthError } from "./lib/authErrors";
 import { subscribeToNotifications, markAllRead } from "./services/notificationService";
@@ -260,8 +261,8 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
     { emoji: "🆔", label: "Mon ID Agricole", sub: "KYC · OTP", color: "orange",  page: "identity" },
     { emoji: "🌾", label: "Mes Champs",       sub: "Parcelles",  color: "green",   page: "parcelles" },
     // Ligne 2 — Finance
-    { emoji: "🤝", label: "AgriSusu",         sub: "Épargne",    color: "amber",   page: "susu" },
-    { emoji: "💳", label: "Crédit",           sub: "Financement",color: "violet",  page: "credit" },
+    { emoji: "🤝", label: "Bokanmin",         sub: "Épargne",    color: "amber",   page: "susu" },
+    { emoji: "💳", label: "Bon de financement",sub: "Participatif",color: "violet",  page: "credit" },
     // Ligne 3 — Protection
     { emoji: "🛡️", label: "Assurance",        sub: insuranceTriggered ? "Alerte !" : "Active", color: "rose", page: "insurance", badge: insuranceTriggered ? "!" : undefined },
     { emoji: "📸", label: "AgriProtect",      sub: "Photo perte",color: "fuchsia", page: "agriprotect" },
@@ -712,7 +713,7 @@ function SusuPage() {
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 text-white rounded-3xl p-5 shadow-xl mb-4">
         <div className="flex items-center justify-between">
-          <div className="text-xs opacity-90 font-semibold uppercase tracking-wide">AgriSusu — Fonds de garantie</div>
+          <div className="text-xs opacity-90 font-semibold uppercase tracking-wide">Bokanmin — Fonds de garantie</div>
           {streak > 0 && (
             <div className="bg-white/25 rounded-full px-2.5 py-1 text-xs font-black flex items-center gap-1">🔥 {streak} semaine{streak > 1 ? "s" : ""}</div>
           )}
@@ -753,6 +754,9 @@ function SusuPage() {
           </div>
           <div className="bg-amber-50 rounded-xl p-4 text-center mb-3 border border-amber-100">
             <Money value={amount} size="md" />
+          </div>
+          <div className="mb-3">
+            <WavePaymentBanner amount={amount} />
           </div>
           <ConfirmButton onConfirm={confirmContribution} label="Confirmer ✓"
             className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600" />
@@ -796,6 +800,7 @@ function CreditPage() {
   const [settings, setSettings] = useState<CreditSettings | null>(null);
   const [contribution12m, setContribution12m] = useState(0);
   const [credits, setCredits] = useState<Credit[]>([]);
+  const [lossValue, setLossValue] = useState(0);
 
   useEffect(() => { const u = subscribeToGuaranteeFund(setFund); return () => u(); }, []);
   useEffect(() => { const u = subscribeToCreditSettings(setSettings); return () => u(); }, []);
@@ -809,9 +814,12 @@ function CreditPage() {
     const u = subscribeToUserCredits(user.id, setCredits);
     return () => u();
   }, [user?.id]);
+  useEffect(() => { if (user) getUserLossValueFcfa(user.id).then(setLossValue); }, [user?.id]);
+
+  const financingScore = computeFinancingScore(lossValue);
 
   const ceilingResult = fund && settings && profile
-    ? computeCreditCeiling({ personalContribution12m: contribution12m, fund, settings, kycStatus: profile.kycStatus })
+    ? computeCreditCeiling({ personalContribution12m: contribution12m, fund, settings, kycStatus: profile.kycStatus, financingScore })
     : null;
   const ceiling = ceilingResult?.ceiling ?? 0;
 
@@ -820,7 +828,7 @@ function CreditPage() {
     const { personalCap, fundShareCap, regulatoryCap } = ceilingResult;
     const limiter = Math.min(personalCap, fundShareCap, regulatoryCap);
     if (limiter === personalCap && personalCap < fundShareCap && personalCap < regulatoryCap) {
-      return "Votre plafond est limité par vos cotisations — cotisez régulièrement sur AgriSusu pour l'augmenter.";
+      return "Votre plafond est limité par vos cotisations — cotisez régulièrement sur Bokanmin pour l'augmenter.";
     }
     if (limiter === fundShareCap) {
       return "Votre plafond est limité par le fonds de garantie collectif — plus de cotisations de la coopérative l'augmenteront pour tous.";
@@ -844,7 +852,7 @@ function CreditPage() {
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-700 text-white rounded-3xl p-5 shadow-xl mb-4">
-        <div className="flex items-center gap-2 mb-2"><CreditCard className="w-6 h-6" /><div className="font-black text-lg">Financement Agricole</div></div>
+        <div className="flex items-center gap-2 mb-2"><CreditCard className="w-6 h-6" /><div className="font-black text-lg">Bon de Financement Participatif</div></div>
         <div className="text-xs opacity-90">Plafond estimé (fonds de garantie + cotisations)</div>
         <div className="text-4xl font-black mt-1">{ceiling.toLocaleString("fr-FR")} <span className="text-base font-bold opacity-80">F</span></div>
         <div className="mt-3 grid grid-cols-2 gap-2">
@@ -852,6 +860,9 @@ function CreditPage() {
           <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Durée</div><div className="font-black">{settings ? `${settings.termMonths} mois` : "—"}</div></div>
         </div>
         {progressHint && <div className="mt-3 text-xs bg-white/15 rounded-xl px-3 py-2">💡 {progressHint}</div>}
+        {financingScore > 0 && (
+          <div className="mt-3 text-xs bg-white/15 rounded-xl px-3 py-2">💡 Score de financement : {financingScore}/100 — boosté par vos pertes déclarées</div>
+        )}
       </div>
 
       <div className="flex gap-2 mb-4">
@@ -860,14 +871,14 @@ function CreditPage() {
             className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
               tab === t ? "bg-violet-600 text-white shadow" : "bg-white border border-stone-200 text-stone-600"
             }`}>
-            {t === "credit" ? "💳 Crédit" : t === "remboursement" ? "📆 Remboursement" : "🌱 Investisseurs"}
+            {t === "credit" ? "💳 Bon de financement" : t === "remboursement" ? "📆 Remboursement" : "🌱 Investisseurs"}
           </button>
         ))}
       </div>
 
       {tab === "credit" && (
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-200">
-          <div className="font-black text-stone-900 mb-3">➕ Demander un crédit</div>
+          <div className="font-black text-stone-900 mb-3">➕ Demander un bon de financement participatif</div>
           <div className="grid grid-cols-4 gap-2 mb-3">
             {[10000, 25000, 50000, 100000].map((v) => (
               <button key={v} onClick={() => setRequest(v)} className={`py-2.5 rounded-xl text-xs font-black transition-all ${
@@ -892,7 +903,7 @@ function CreditPage() {
           {!latestCredit && (
             <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
               <CreditCard className="w-8 h-8 text-stone-300 mx-auto mb-2" />
-              <div className="text-sm text-stone-500 font-medium">Aucune demande de crédit</div>
+              <div className="text-sm text-stone-500 font-medium">Aucune demande de bon de financement</div>
             </div>
           )}
           {latestCredit && (
@@ -1160,12 +1171,24 @@ function AgriProtectPage() {
 
 function LossesPage() {
   const { profile } = useAuth();
+  const { pushToast } = useApp();
   const [qty, setQty] = useState(500);
-  const pricePerKg = 600; // FCFA/kg anacarde
+  const pricePerKg = 600; // FCFA/kg anacarde — estimation de valeur marché pour le rapport PDF
+  const financingBasePerKg = 100; // FCFA/kg — base du score de financement, distincte de la valeur marché
   const [preview, setPreview] = useState<PdfDocumentData | null>(null);
 
-  const openPreview = () => {
+  const openPreview = async () => {
     if (!profile) return;
+    try {
+      await submitLossClaim({
+        userId: profile.uid, comment: "", gps: null, photoUrls: [],
+        lossKg: qty, estimatedValueFcfa: qty * financingBasePerKg,
+      });
+    } catch (err) {
+      console.error("Erreur déclaration de perte :", err);
+      pushToast({ tone: "warn", title: "Échec de l'enregistrement", message: "La perte n'a pas pu être déclarée. Réessayez." });
+      return;
+    }
     setPreview({
       title: "Rapport d'Évaluation des Pertes",
       subtitle: "Coopérative COOPAVEC — Moteur d'évaluation automatique",
@@ -2180,10 +2203,10 @@ type AllPages =
 
 const PAGE_TITLES: Record<string, string> = {
   home:        "COOPAVEC",
-  susu:        "AgriSusu",
+  susu:        "Bokanmin",
   weather:     "Météo & Alertes",
   parcelles:   "Mes Champs",
-  credit:      "Crédit & Financement",
+  credit:      "Bon de Financement Participatif",
   insurance:   "Assurance Agricole",
   agriprotect: "Agri-Protect Photo",
   losses:      "Évaluation des Pertes",
@@ -2248,7 +2271,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
   const navItems = [
     { id: "dash",     icon: PieChart,  label: "Vue d'ensemble" },
     { id: "clients",  icon: Users,     label: "Membres"         },
-    { id: "credits",  icon: CreditCard,label: "Crédits"         },
+    { id: "credits",  icon: CreditCard,label: "Bons de financement" },
     { id: "txns",     icon: Activity,  label: "Transactions"    },
     { id: "settings", icon: Settings,  label: "Paramètres"      },
   ] as const;
@@ -2347,7 +2370,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
             {pendingCredits.length > 0 && (
               <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
                 <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600" />
-                <p className="text-xs text-stone-700 font-medium">{pendingCredits.length} demande(s) de crédit en attente de validation</p>
+                <p className="text-xs text-stone-700 font-medium">{pendingCredits.length} demande(s) de bon de financement en attente de validation</p>
               </div>
             )}
           </div>
@@ -2390,10 +2413,10 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
           </div>
         )}
 
-        {/* ── CRÉDITS ── */}
+        {/* ── BONS DE FINANCEMENT ── */}
         {tab === "credits" && (
           <div className="space-y-4">
-            <h2 className="text-lg font-black text-stone-900">Demandes de crédit en attente</h2>
+            <h2 className="text-lg font-black text-stone-900">Demandes de bon de financement en attente</h2>
             {pendingCredits.length === 0 && (
               <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
                 <CreditCard className="w-8 h-8 text-stone-300 mx-auto mb-2" />
@@ -2774,6 +2797,164 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
   );
 }
 
+// ==================== AGENT TERRAIN SPACE ====================
+
+function AgentSpace({ onLogout }: { onLogout: () => void }) {
+  const [tab, setTab] = useState<"beneficiaires" | "collecte">("beneficiaires");
+  const { online, pushToast } = useApp();
+  const { profile } = useAuth();
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(true);
+  const [selected, setSelected] = useState<Profile | null>(null);
+  const [weeks, setWeeks] = useState(1);
+
+  useEffect(() => { listProfiles().then((p) => { setProfiles(p); setProfilesLoading(false); }); }, []);
+
+  const beneficiaries = profiles.filter((p) => p.role === "farmer" && p.cooperativeId === profile?.cooperativeId);
+  const amount = WEEKLY_CONTRIBUTION * weeks;
+
+  const selectBeneficiary = (p: Profile) => {
+    setSelected(p);
+    setWeeks(1);
+    setTab("collecte");
+  };
+
+  const confirmCollection = async () => {
+    if (!selected) return;
+    try {
+      await recordContribution(selected.uid, amount, "guarantee_fund", "Cotisation Bokanmin — collectée par agent (Wave)");
+      pushToast({ tone: "success", title: "Cotisation enregistrée !", message: `${selected.fullName} · ${amount.toLocaleString("fr-FR")} F` });
+    } catch (err) {
+      console.error("Erreur collecte cotisation :", err);
+      pushToast({ tone: "warn", title: "Échec de la cotisation", message: "Réessayez, vérifiez votre connexion." });
+      throw err;
+    }
+  };
+
+  const navItems = [
+    { id: "beneficiaires", icon: Users, label: "Bénéficiaires" },
+    { id: "collecte",      icon: QrCode, label: "Collecte"     },
+  ] as const;
+
+  return (
+    <div className="min-h-screen bg-stone-50">
+      <header className="sticky top-0 z-30 bg-white border-b border-stone-200 shadow-sm">
+        <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-sky-600 rounded-xl flex items-center justify-center">
+              <QrCode className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <div className="font-black text-stone-900 text-sm">Agent terrain</div>
+              <div className="flex items-center gap-1 text-[10px] text-stone-400">
+                {online ? <Wifi className="w-3 h-3 text-emerald-500" /> : <WifiOff className="w-3 h-3 text-amber-500" />}
+                COOPAVEC · {profile?.cooperativeId}
+              </div>
+            </div>
+          </div>
+          <button onClick={onLogout}
+            className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl px-3 py-2 text-xs font-bold transition-colors">
+            <LogOut className="w-4 h-4" /> Déconnexion
+          </button>
+        </div>
+      </header>
+
+      <nav className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-lg border-t border-stone-200 z-30">
+        <div className="max-w-xl mx-auto grid grid-cols-2">
+          {navItems.map(it => {
+            const Icon = it.icon;
+            const active = tab === it.id;
+            return (
+              <button key={it.id} onClick={() => setTab(it.id)}
+                className="relative flex flex-col items-center justify-center py-2.5 gap-0.5">
+                {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-sky-500 rounded-b-full" />}
+                <div className={`p-1.5 rounded-xl ${active ? "bg-sky-100" : ""}`}>
+                  <Icon className="w-5 h-5" style={{ color: active ? "#0284c7" : "#78716c" }} strokeWidth={active ? 2.5 : 2} />
+                </div>
+                <span className={`text-[10px] ${active ? "font-extrabold text-sky-700" : "font-medium text-stone-500"}`}>{it.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      <main className="max-w-xl mx-auto px-4 py-5 pb-24">
+        {tab === "beneficiaires" && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-black text-stone-900">Bénéficiaires de mon secteur</h2>
+            {profilesLoading && <SkeletonList rows={4} />}
+            {!profilesLoading && beneficiaries.length === 0 && (
+              <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+                <Users className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                <div className="text-sm text-stone-500 font-medium">Aucun bénéficiaire dans votre coopérative</div>
+              </div>
+            )}
+            <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+              {beneficiaries.map((b) => (
+                <button key={b.uid} onClick={() => selectBeneficiary(b)}
+                  className="w-full px-4 py-3.5 flex items-center gap-3 border-b border-stone-50 last:border-0 text-left hover:bg-stone-50">
+                  <Avatar name={b.fullName} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-stone-900 text-sm">{b.fullName}</div>
+                    <div className="text-xs text-stone-500">{b.village}, {b.region} · {b.phone}</div>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                    b.kycStatus === "pending" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+                  }`}>{b.kycStatus === "pending" ? "KYC en attente" : b.kycStatus}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab === "collecte" && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-black text-stone-900">Collecte de cotisation</h2>
+            {!selected ? (
+              <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+                <QrCode className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                <div className="text-sm text-stone-500 font-medium">Sélectionnez un bénéficiaire dans l'onglet « Bénéficiaires »</div>
+              </div>
+            ) : (
+              <>
+                <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm flex items-center gap-3">
+                  <Avatar name={selected.fullName} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-stone-900 text-sm">{selected.fullName}</div>
+                    <div className="text-xs text-stone-500">{selected.village}, {selected.region}</div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+                  <div className="text-xs text-stone-500 mb-3 font-bold">Cotisation Bokanmin</div>
+                  <div className="flex items-center justify-center gap-3 mb-3">
+                    <button onClick={() => setWeeks((w) => Math.max(1, w - 1))}
+                      className="w-10 h-10 rounded-xl bg-stone-100 text-stone-700 font-black text-lg">−</button>
+                    <div className="text-center">
+                      <div className="text-2xl font-black text-stone-800">{weeks}</div>
+                      <div className="text-[10px] text-stone-500 font-semibold uppercase">semaine{weeks > 1 ? "s" : ""}</div>
+                    </div>
+                    <button onClick={() => setWeeks((w) => w + 1)}
+                      className="w-10 h-10 rounded-xl bg-stone-100 text-stone-700 font-black text-lg">+</button>
+                  </div>
+                  <div className="bg-amber-50 rounded-xl p-4 text-center mb-3 border border-amber-100">
+                    <Money value={amount} size="md" />
+                  </div>
+                </div>
+
+                <WavePaymentBanner amount={amount} />
+
+                <ConfirmButton onConfirm={confirmCollection} label="J'ai vérifié la réception — Confirmer"
+                  className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600" />
+              </>
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
 // ==================== MAIN SHELL ====================
 
 function Shell() {
@@ -2804,6 +2985,7 @@ function Shell() {
 
   if (role === "admin")  return <AdminSpace  onLogout={handleLogout} />;
   if (role === "investor") return <ClientSpace onLogout={handleLogout} />;
+  if (role === "agent")    return <AgentSpace  onLogout={handleLogout} />;
 
   // ── FARMER ──
   const bottomPages = new Set<string>(["home", "weather", "parcelles", "payments", "identity"]);

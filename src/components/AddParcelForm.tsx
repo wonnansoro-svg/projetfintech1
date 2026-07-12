@@ -3,16 +3,8 @@ import { X, MapPin, Loader, CheckCircle2, AlertCircle, Route } from "lucide-reac
 import { addParcel } from "../services/parcelService";
 import { getCurrentLocation, trackParcelBoundary, calculatePolygonArea, type GeoPoint } from "../lib/geolocation";
 import { vibrate } from "../lib/haptics";
+import { CROPS } from "../lib/crops";
 import type { Crop } from "../types/firestore";
-
-const CROPS: { key: Crop; label: string; emoji: string }[] = [
-  { key: "maize", label: "Maïs", emoji: "🌽" },
-  { key: "millet", label: "Mil", emoji: "🌾" },
-  { key: "rice", label: "Riz", emoji: "🍚" },
-  { key: "anacarde", label: "Anacarde", emoji: "🥜" },
-  { key: "cacao", label: "Cacao", emoji: "🍫" },
-  { key: "manioc", label: "Manioc", emoji: "🥔" },
-];
 
 export default function AddParcelForm({ ownerId, onClose, onDone }: {
   ownerId: string; onClose: () => void; onDone: () => void;

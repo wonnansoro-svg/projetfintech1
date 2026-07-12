@@ -8,7 +8,7 @@ import { recordContribution } from "../services/contributionService";
 import type { Profile, Parcel, Credit, Transaction, Role, KycStatus } from "../types/firestore";
 
 const KYC_LABELS: Record<KycStatus, string> = { pending: "En attente", level1: "Niveau 1", level2: "Niveau 2" };
-const ROLE_LABELS: Record<Role, string> = { farmer: "🌾 Agriculteur", investor: "🏢 Investisseur", admin: "⚙️ Admin" };
+const ROLE_LABELS: Record<Role, string> = { farmer: "🌾 Agriculteur", investor: "🏢 Investisseur", admin: "⚙️ Admin", agent: "🧑‍🌾 Agent" };
 
 export default function MemberDetailPanel({ uid, onClose }: { uid: string; onClose: () => void }) {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -94,8 +94,8 @@ export default function MemberDetailPanel({ uid, onClose }: { uid: string; onClo
 
               <div className="bg-white rounded-2xl border border-stone-200 p-4">
                 <div className="text-xs font-black text-stone-500 uppercase mb-2">Rôle</div>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["farmer", "investor", "admin"] as const).map((r) => (
+                <div className="grid grid-cols-2 gap-2">
+                  {(["farmer", "investor", "admin", "agent"] as const).map((r) => (
                     <button key={r} disabled={busy} onClick={() => applyPatch({ role: r })}
                       className={`py-2 rounded-xl text-xs font-bold disabled:opacity-50 ${profile.role === r ? "bg-violet-600 text-white" : "bg-stone-100 text-stone-600"}`}>
                       {ROLE_LABELS[r]}

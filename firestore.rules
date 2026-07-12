@@ -20,13 +20,14 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role;
     }
     function isAdmin() { return isSignedIn() && myRole() == "admin"; }
+    function isAgent() { return isSignedIn() && myRole() == "agent"; }
 
     match /profiles/{uid} {
       allow read: if isOwner(uid) || isAdmin();
-      allow list: if isAdmin();
+      allow list: if isAdmin() || isAgent();
       allow create: if request.resource.data.uid == uid
         && (isOwner(uid) || isAdmin())
-        && request.resource.data.role in ["farmer", "investor"]; // "admin" attribué manuellement en console
+        && request.resource.data.role in ["farmer", "investor", "agent"]; // "admin" attribué manuellement en console
       allow update: if isAdmin()
         || (isOwner(uid)
             && request.resource.data.role == resource.data.role
@@ -39,7 +40,7 @@ service cloud.firestore {
       // Un bénéficiaire ne peut qu'augmenter son solde (cotisation, crédit décaissé),
       // jamais le diminuer directement ni au-delà d'un plafond raisonnable par écriture.
       allow update: if isAdmin()
-        || (isOwner(uid)
+        || ((isOwner(uid) || isAgent())
             && request.resource.data.balance >= resource.data.balance
             && request.resource.data.balance - resource.data.balance <= 5000000);
     }
@@ -53,7 +54,7 @@ service cloud.firestore {
     match /contributions/{id} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isSignedIn()
-        && (request.resource.data.userId == request.auth.uid || isAdmin())
+        && (request.resource.data.userId == request.auth.uid || isAdmin() || isAgent())
         && request.resource.data.amount > 0
         && request.resource.data.status == "confirmed";
       allow update, delete: if isAdmin();
@@ -88,7 +89,7 @@ service cloud.firestore {
     match /transactions/{id} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow list: if isAdmin() || isSignedIn();
-      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isAdmin() || isAgent());
       allow update, delete: if false; // historique immuable
     }
 
