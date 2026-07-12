@@ -42,8 +42,7 @@ export function getCurrentLocation(): Promise<GeoPoint> {
       },
       (err) => {
         console.error("Geo error:", err);
-        // Fallback à Thiès, Sénégal si erreur
-        resolve({ lat: 14.7925, lng: -16.9626 });
+        reject(err instanceof Error ? err : new Error("Impossible d'obtenir la position GPS."));
       },
       { timeout: 10000, maximumAge: 60000, enableHighAccuracy: true }
     );

@@ -2,6 +2,7 @@
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth"; // <-- On ajoute ça pour l'authentification
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -19,3 +20,9 @@ const analytics = getAnalytics(app);
 
 // On exporte 'auth' pour pouvoir l'utiliser n'importe où dans l'application
 export const auth = getAuth(app);
+
+// Firestore avec cache local persistant (fonctionne hors-ligne sur le terrain,
+// synchronise automatiquement au retour réseau)
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+});

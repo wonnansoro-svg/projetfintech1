@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Mail, Lock, Eye, EyeOff, LogIn, Loader, AlertCircle, CheckCircle2,
   Wifi, WifiOff, Languages, ChevronLeft, Home, Cloud, Sprout, Wallet,
@@ -6,11 +6,27 @@ import {
   Clock, Phone, QrCode, MapPin, User, Leaf, Users, Truck, Warehouse,
   Recycle, FileText, Camera, BarChart2, CreditCard, Building2,
   Package, BadgeCheck, ChevronRight, Star, TrendingUp, Banknote,
-  LogOut, Settings, Bell, Search, PieChart, UserPlus, Activity, DollarSign, Filter, Edit,
+  LogOut, Settings, Bell, PieChart, Activity, DollarSign,
 } from "lucide-react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { t, LANGS, type Lang, getGreeting } from "./i18n";
+import BeneficiaryOnboardingForm from "./components/BeneficiaryOnboardingForm";
+import AddParcelForm from "./components/AddParcelForm";
+import IdentityQRCode from "./components/IdentityQRCode";
+import { getCurrentLocation, type GeoPoint } from "./lib/geolocation";
+import { subscribeToGuaranteeFund, subscribeToCreditSettings } from "./services/fundService";
+import { recordContribution } from "./services/contributionService";
+import { subscribeToWallet } from "./services/walletService";
+import {
+  requestCredit, subscribeToUserCredits, subscribeToPendingCredits,
+  approveCredit, rejectCredit, countActiveCredits,
+} from "./services/creditService";
+import { computeCreditCeiling } from "./lib/credit";
+import { listProfiles } from "./services/profileService";
+import { listRecentTransactions } from "./services/transactionService";
+import { getAgriculturalAdvice } from "./lib/weather";
+import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction } from "./types/firestore";
 
 // ==================== COMPOSANTS RÉUTILISABLES ====================
 
@@ -204,24 +220,6 @@ function LoginPage() {
             {isLogin ? "Se connecter" : "S'inscrire"}
           </button>
 
-          {/* Demo quick access */}
-          <div className="pt-2 border-t border-stone-100">
-            <p className="text-[11px] text-center text-stone-400 font-medium mb-2.5">Accès rapide démo</p>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label:"Agriculteur", emoji:"🌾", email:"farmer@demo.ci",  cls:"bg-emerald-50 text-emerald-700 border-emerald-200" },
-                { label:"Client",      emoji:"🏢", email:"client@demo.ci",  cls:"bg-sky-50 text-sky-700 border-sky-200"             },
-                { label:"Admin",       emoji:"⚙️",  email:"admin@demo.ci",   cls:"bg-violet-50 text-violet-700 border-violet-200"    },
-              ].map(d=>(
-                <button key={d.label} type="button"
-                  onClick={() => { setEmail(d.email); setPassword("demo1234"); setIsLogin(true); }}
-                  className={`py-2 rounded-xl border text-xs font-bold ${d.cls}`}>
-                  {d.emoji} {d.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="text-center">
             <button type="button" onClick={() => setIsLogin(!isLogin)}
               className="text-xs font-medium text-green-600 hover:text-green-700 underline">
@@ -381,18 +379,38 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
 
 function IdentityPage({ onLogout }: { onLogout?: () => void }) {
   const [tab, setTab] = useState<"profil" | "kyc" | "gps">("profil");
+  const { profile } = useAuth();
+  const [gps, setGps] = useState<GeoPoint | null>(null);
+  const [gpsError, setGpsError] = useState("");
+  const [locating, setLocating] = useState(false);
+
+  const refreshLocation = async () => {
+    setLocating(true);
+    setGpsError("");
+    try {
+      setGps(await getCurrentLocation());
+    } catch {
+      setGpsError("Impossible d'obtenir la position GPS. Vérifiez que la localisation est autorisée.");
+    } finally {
+      setLocating(false);
+    }
+  };
+
+  const kycLabel = profile?.kycStatus === "level2" ? "KYC Niveau 2 validé"
+    : profile?.kycStatus === "level1" ? "KYC Niveau 1 validé"
+    : "KYC en attente de validation";
 
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       {/* Header Card */}
       <div className="animate-fade-up relative bg-gradient-to-br from-orange-500 via-amber-600 to-yellow-600 text-white rounded-3xl p-5 shadow-xl mb-4">
         <div className="flex items-start gap-4 mb-4">
-          <Avatar name="SORO Wonnan" size="xl" />
+          <Avatar name={profile?.fullName || "?"} size="xl" />
           <div className="flex-1">
-            <div className="text-xl font-black">SORO Wonnan</div>
-            <div className="text-xs opacity-90 flex items-center gap-1 mt-1"><Phone className="w-3 h-3" /> +225 07 78 01 45 37</div>
+            <div className="text-xl font-black">{profile?.fullName}</div>
+            <div className="text-xs opacity-90 flex items-center gap-1 mt-1"><Phone className="w-3 h-3" /> {profile?.phone}</div>
             <div className="mt-2 inline-flex items-center gap-1 bg-white/20 rounded-full px-3 py-1 text-xs font-bold">
-              <BadgeCheck className="w-3.5 h-3.5" /> KYC Validé
+              <BadgeCheck className="w-3.5 h-3.5" /> {kycLabel}
             </div>
           </div>
         </div>
@@ -414,14 +432,14 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
         ))}
       </div>
 
-      {tab === "profil" && (
+      {tab === "profil" && profile && (
         <div className="space-y-3">
           {[
-            { label: "Nom complet",    value: "SORO Wonnan",    icon: "👤" },
-            { label: "Téléphone",      value: "+225 07 78 01 45 37", icon: "📞" },
-            { label: "Coopérative",    value: "Coop. Anacarde Nord", icon: "🏛️" },
-            { label: "Région",         value: "Hambol, Côte d'Ivoire", icon: "📍" },
-            { label: "Cultures",       value: "Anacarde · Maïs · Cacao", icon: "🌾" },
+            { label: "Nom complet",    value: profile.fullName, icon: "👤" },
+            { label: "Téléphone",      value: profile.phone, icon: "📞" },
+            { label: "Coopérative",    value: profile.cooperativeId, icon: "🏛️" },
+            { label: "Région",         value: `${profile.village}, ${profile.region}`, icon: "📍" },
+            { label: "Cultures",       value: profile.crops.join(" · ") || "—", icon: "🌾" },
           ].map(row => (
             <div key={row.label} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm flex items-center gap-3">
               <span className="text-2xl">{row.icon}</span>
@@ -431,48 +449,22 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
         </div>
       )}
 
-      {tab === "kyc" && (
+      {tab === "kyc" && profile && (
         <div className="space-y-4">
-          {/* Parcours d'enrôlement SOP-01 */}
-          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2"><User className="w-5 h-5 text-orange-500" /><span className="font-black text-stone-800">Parcours d'enrôlement</span></div>
-              <span className="text-xs font-black text-orange-600">7/9</span>
-            </div>
-            {[
-              { label: "Identification & sensibilisation",     resp: "Agent de terrain",   done: true },
-              { label: "Collecte informations & coordonnées",  resp: "Agent de terrain",   done: true },
-              { label: "Vérification pièce d'identité",        resp: "Agent de terrain",   done: true },
-              { label: "Saisie CRM & création profil",         resp: "Resp. Données",      done: true },
-              { label: "Validation KYC back-office (BCEAO)",   resp: "Compliance",         done: true },
-              { label: "Activation compte mobile",             resp: "Service Technique",  done: true },
-              { label: "Formation rapide à l'application",     resp: "Agent de terrain",   done: true },
-              { label: "Signature CGU & consentement RGPD",     resp: "Utilisateur",        done: false },
-              { label: "Suivi J+7 · 1ère transaction",          resp: "Resp. Commercial",   done: false },
-            ].map((s, i) => (
-              <div key={i} className="flex items-center gap-3 py-2 border-b border-stone-50 last:border-0">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${s.done ? "bg-emerald-500" : "bg-stone-200"}`}>
-                  {s.done ? <CheckCircle2 className="w-3.5 h-3.5 text-white" /> : <div className="w-2 h-2 bg-stone-400 rounded-full" />}
-                </div>
-                <div className="flex-1">
-                  <div className={`text-sm font-bold ${s.done ? "text-stone-800" : "text-stone-400"}`}>{s.label}</div>
-                  <div className="text-[10px] text-stone-400">{s.resp}</div>
-                </div>
-              </div>
-            ))}
-            <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
-              Il reste 2 étapes avant l'activation complète : signez vos CGU et effectuez votre première transaction avant le <span className="font-black">J+7</span>.
-            </div>
-          </div>
-
           <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
             <div className="flex items-center gap-2 mb-3"><User className="w-5 h-5 text-orange-500" /><span className="font-black text-stone-800">Pièce d'identité</span></div>
             <div className="bg-stone-50 rounded-xl p-6 text-center border-2 border-dashed border-stone-300">
               <Camera className="w-10 h-10 text-stone-400 mx-auto mb-2" />
               <div className="text-sm text-stone-500 font-medium">Photo CNI / Passeport</div>
-              <div className="mt-2 inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full px-3 py-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Validée — Niveau KYC 1
-              </div>
+              {profile.kycStatus === "pending" ? (
+                <div className="mt-2 inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-full px-3 py-1">
+                  <AlertTriangle className="w-3.5 h-3.5" /> En attente de vérification par un agent
+                </div>
+              ) : (
+                <div className="mt-2 inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full px-3 py-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Validée — {kycLabel}
+                </div>
+              )}
             </div>
           </div>
 
@@ -481,30 +473,28 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
             <div className="flex items-center gap-2 mb-3"><Shield className="w-5 h-5 text-orange-500" /><span className="font-black text-stone-800">Plafonds selon niveau KYC</span></div>
             <div className="space-y-2">
               {[
-                { level: "Niveau 1 (actuel)", tx: "100 000 F", month: "500 000 F", solde: "300 000 F", active: true },
-                { level: "Niveau 2",           tx: "500 000 F", month: "2 000 000 F", solde: "1 500 000 F", active: false },
-              ].map((r, i) => (
-                <div key={i} className={`rounded-xl p-3 border ${r.active ? "bg-orange-50 border-orange-200" : "bg-stone-50 border-stone-200"}`}>
-                  <div className={`text-xs font-black mb-1 ${r.active ? "text-orange-700" : "text-stone-500"}`}>{r.level}</div>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div><div className="text-[10px] text-stone-500">Par transaction</div><div className="font-bold text-stone-800 text-xs">{r.tx}</div></div>
-                    <div><div className="text-[10px] text-stone-500">Par mois</div><div className="font-bold text-stone-800 text-xs">{r.month}</div></div>
-                    <div><div className="text-[10px] text-stone-500">Solde max</div><div className="font-bold text-stone-800 text-xs">{r.solde}</div></div>
+                { key: "level1", level: "Niveau 1", tx: "100 000 F", month: "500 000 F", solde: "300 000 F" },
+                { key: "level2", level: "Niveau 2", tx: "500 000 F", month: "2 000 000 F", solde: "1 500 000 F" },
+              ].map((r) => {
+                const active = profile.kycStatus === r.key;
+                return (
+                  <div key={r.key} className={`rounded-xl p-3 border ${active ? "bg-orange-50 border-orange-200" : "bg-stone-50 border-stone-200"}`}>
+                    <div className={`text-xs font-black mb-1 ${active ? "text-orange-700" : "text-stone-500"}`}>{r.level}{active ? " (actuel)" : ""}</div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div><div className="text-[10px] text-stone-500">Par transaction</div><div className="font-bold text-stone-800 text-xs">{r.tx}</div></div>
+                      <div><div className="text-[10px] text-stone-500">Par mois</div><div className="font-bold text-stone-800 text-xs">{r.month}</div></div>
+                      <div><div className="text-[10px] text-stone-500">Solde max</div><div className="font-bold text-stone-800 text-xs">{r.solde}</div></div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-            <button className="mt-3 w-full py-2.5 bg-stone-100 text-stone-700 rounded-xl font-bold text-sm">Demander le passage au Niveau 2</button>
           </div>
 
           <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
             <div className="flex items-center gap-2 mb-3"><QrCode className="w-5 h-5 text-orange-500" /><span className="font-black text-stone-800">QR Code de vérification</span></div>
             <div className="flex justify-center">
-              <div className="w-40 h-40 bg-white border-4 border-stone-800 rounded-2xl grid grid-cols-8 gap-0.5 p-2">
-                {Array.from({ length: 64 }).map((_, i) => (
-                  <div key={i} className={((i * 7 + 3) % 3 === 0) || (i < 8 || (i % 8 === 0) || (i > 55)) ? "bg-stone-900 rounded-sm" : "bg-white"} />
-                ))}
-              </div>
+              <IdentityQRCode profile={profile} />
             </div>
           </div>
         </div>
@@ -515,11 +505,18 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
           <div className="flex items-center gap-2 mb-3"><MapPin className="w-5 h-5 text-orange-500" /><span className="font-black text-stone-800">Adresse GPS</span></div>
           <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-4 border border-amber-100">
             <div className="text-xs text-stone-500 font-semibold mb-1">Coordonnées</div>
-            <div className="font-mono font-bold text-stone-800">8.4167° N, -5.0167° O</div>
-            <div className="text-xs text-stone-500 mt-2">Hambol, Katiola — Côte d'Ivoire</div>
+            {gps ? (
+              <div className="font-mono font-bold text-stone-800">{gps.lat.toFixed(5)}° N, {gps.lng.toFixed(5)}° E</div>
+            ) : (
+              <div className="text-sm text-stone-500">Position non capturée</div>
+            )}
+            <div className="text-xs text-stone-500 mt-2">{profile ? `${profile.village}, ${profile.region} — Côte d'Ivoire` : ""}</div>
+            {gpsError && <div className="text-xs text-red-600 mt-2">{gpsError}</div>}
           </div>
-          <button className="mt-3 w-full py-3 bg-orange-500 text-white rounded-xl font-bold flex items-center justify-center gap-2">
-            <MapPin className="w-4 h-4" /> Actualiser ma position
+          <button onClick={refreshLocation} disabled={locating}
+            className="mt-3 w-full py-3 bg-orange-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-60">
+            {locating ? <Loader className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+            Actualiser ma position
           </button>
         </div>
       )}
@@ -530,15 +527,24 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
 // ==================== MODULE 2 : MES CHAMPS ====================
 
 function ParcellesPage() {
-  const { lang, parcels } = useApp();
+  const { parcels } = useApp();
+  const { user } = useAuth();
+  const [showAdd, setShowAdd] = useState(false);
   const cropEmoji: Record<string, string> = { maize: "🌽", millet: "🌾", rice: "🍚", anacarde: "🥜", cacao: "🍫", manioc: "🥔" };
 
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="flex justify-between items-center mb-4">
         <div className="font-black text-stone-800 text-lg">🌾 Mes Parcelles</div>
-        <button className="bg-green-600 text-white rounded-xl px-4 py-2 text-sm font-bold">+ Ajouter</button>
+        <button onClick={() => setShowAdd(true)} className="bg-green-600 text-white rounded-xl px-4 py-2 text-sm font-bold">+ Ajouter</button>
       </div>
+      {parcels.length === 0 && (
+        <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+          <MapPin className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+          <div className="text-sm text-stone-500 font-medium">Aucune parcelle enregistrée</div>
+          <div className="text-xs text-stone-400 mt-1">Ajoutez une parcelle avec sa position GPS réelle</div>
+        </div>
+      )}
       <div className="space-y-3">
         {parcels.map((p) => (
           <div key={p.id} className="animate-fade-up bg-white rounded-2xl p-4 shadow-sm border border-stone-200">
@@ -547,7 +553,6 @@ function ParcellesPage() {
               <div className="flex-1 min-w-0">
                 <div className="font-black text-stone-800 truncate">{p.name}</div>
                 <div className="text-sm text-stone-600">📏 {p.hectares} ha</div>
-                <div className="text-xs text-emerald-700 font-semibold mt-1">Production estimée : {(p.hectares * 1.2).toFixed(1)} t</div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -567,6 +572,9 @@ function ParcellesPage() {
           </div>
         ))}
       </div>
+      {showAdd && user && (
+        <AddParcelForm ownerId={user.id} onClose={() => setShowAdd(false)} onDone={() => setShowAdd(false)} />
+      )}
     </div>
   );
 }
@@ -574,31 +582,58 @@ function ParcellesPage() {
 // ==================== MODULE 3 : AGRISUSU (Épargne & Cotisations) ====================
 
 function SusuPage() {
-  const { lang, balance, susuMembers, addTx, pushToast } = useApp();
+  const { pushToast } = useApp();
+  const { user } = useAuth();
   const [amount, setAmount] = useState(5000);
-  const [tab, setTab] = useState<"epargne" | "membres" | "retrait">("epargne");
-  const paidCount = susuMembers.filter((m: any) => m.paid).length;
+  const [tab, setTab] = useState<"epargne" | "fonds">("epargne");
+  const [saving, setSaving] = useState(false);
+  const [fund, setFund] = useState<GuaranteeFund | null>(null);
+  const [myContribution, setMyContribution] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToGuaranteeFund(setFund);
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribe = subscribeToWallet(user.id, (w) => setMyContribution(w?.totalContributed ?? 0));
+    return () => unsubscribe();
+  }, [user?.id]);
+
+  const confirmContribution = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      await recordContribution(user.id, amount, "guarantee_fund");
+      pushToast({ tone: "success", title: "Cotisation enregistrée !", message: `${amount.toLocaleString("fr-FR")} F` });
+    } catch (err) {
+      console.error("Erreur cotisation :", err);
+      pushToast({ tone: "warn", title: "Échec de la cotisation", message: "Réessayez, vérifiez votre connexion." });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 text-white rounded-3xl p-5 shadow-xl mb-4">
-        <div className="text-xs opacity-90 font-semibold uppercase tracking-wide">Mon Groupe</div>
-        <div className="text-2xl font-black mb-1">Kër Gox 👨‍👩‍👧‍👦</div>
-        <div className="text-sm opacity-95">{susuMembers.length} membres · {paidCount} ont cotisé</div>
+        <div className="text-xs opacity-90 font-semibold uppercase tracking-wide">AgriSusu — Fonds de garantie</div>
+        <div className="text-2xl font-black mb-1">Épargne collective 🤝</div>
+        <div className="text-sm opacity-95">L'argent cotisé par tous les bénéficiaires devient l'assurance qui débloque les crédits agricoles</div>
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Cagnotte</div><div className="font-black text-lg">{(paidCount * amount).toLocaleString("fr-FR")} F</div></div>
-          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Bénéficiaire</div><div className="font-black text-lg">Tour 4</div></div>
+          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Fonds commun</div><div className="font-black text-lg">{(fund?.totalDeposited ?? 0).toLocaleString("fr-FR")} F</div></div>
+          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Ma cotisation totale</div><div className="font-black text-lg">{myContribution.toLocaleString("fr-FR")} F</div></div>
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-2 mb-4">
-        {(["epargne", "membres", "retrait"] as const).map(t => (
+        {(["epargne", "fonds"] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`flex-1 py-2 rounded-xl text-xs font-bold capitalize transition-all ${
               tab === t ? "bg-amber-500 text-white shadow" : "bg-white border border-stone-200 text-stone-600"
             }`}>
-            {t === "epargne" ? "💰 Épargne" : t === "membres" ? "👥 Membres" : "📤 Retrait"}
+            {t === "epargne" ? "💰 Cotiser" : "🏦 Le fonds commun"}
           </button>
         ))}
       </div>
@@ -615,36 +650,32 @@ function SusuPage() {
           <div className="bg-amber-50 rounded-xl p-4 text-center mb-3 border border-amber-100">
             <Money value={amount} size="md" />
           </div>
-          <button onClick={() => {
-            addTx({ type: "deposit", amount, label: "AgriSusu — Épargne" });
-            pushToast({ tone: "success", title: "Cotisation enregistrée !", message: `${amount.toLocaleString("fr-FR")} F` });
-          }} className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600">
-            Confirmer ✓
+          <button onClick={confirmContribution} disabled={saving}
+            className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600 disabled:opacity-60">
+            {saving ? "Enregistrement…" : "Confirmer ✓"}
           </button>
         </div>
       )}
 
-      {tab === "membres" && (
-        <div className="space-y-2">
-          {susuMembers.map((m: any, i: number) => (
-            <div key={m.id ?? i} className="bg-white rounded-2xl p-3 border border-stone-200 flex items-center gap-3">
-              <Avatar name={m.name} size="sm" />
-              <div className="flex-1"><div className="font-bold text-stone-800 text-sm">{m.name}</div></div>
-              <div className={`text-xs font-black px-2 py-1 rounded-full ${m.paid ? "bg-emerald-100 text-emerald-700" : "bg-stone-100 text-stone-500"}`}>
-                {m.paid ? "✓ Cotisé" : "En attente"}
-              </div>
+      {tab === "fonds" && (
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-200 space-y-3">
+          <div className="grid grid-cols-2 gap-2 text-center">
+            <div className="bg-stone-50 rounded-xl p-3 border border-stone-200">
+              <div className="text-xs text-stone-500 font-semibold">Déposé en banque</div>
+              <div className="font-black text-stone-800">{(fund?.totalDeposited ?? 0).toLocaleString("fr-FR")} F</div>
             </div>
-          ))}
-        </div>
-      )}
-
-      {tab === "retrait" && (
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-200">
-          <div className="text-center py-4">
-            <div className="text-4xl mb-2">🔒</div>
-            <div className="font-black text-stone-800">Retrait disponible au Tour 7</div>
-            <div className="text-sm text-stone-500 mt-1">3 tours restants avant votre rotation</div>
+            <div className="bg-stone-50 rounded-xl p-3 border border-stone-200">
+              <div className="text-xs text-stone-500 font-semibold">Déjà prêté (crédits)</div>
+              <div className="font-black text-stone-800">{(fund?.totalDisbursedAsCredits ?? 0).toLocaleString("fr-FR")} F</div>
+            </div>
+            <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100 col-span-2">
+              <div className="text-xs text-emerald-700 font-semibold">Disponible pour de nouveaux crédits</div>
+              <div className="font-black text-emerald-800 text-lg">{(fund?.availableForCredit ?? 0).toLocaleString("fr-FR")} F</div>
+            </div>
           </div>
+          <p className="text-xs text-stone-500">
+            Chaque cotisation renforce le fonds commun. Ce fonds sert de garantie auprès de la banque : plus il est important, plus les bénéficiaires peuvent accéder à des crédits agricoles importants.
+          </p>
         </div>
       )}
     </div>
@@ -654,20 +685,57 @@ function SusuPage() {
 // ==================== MODULE 4 : CRÉDIT (Financement Participatif inclus) ====================
 
 function CreditPage() {
-  const { lang, creditAmount, addTx, pushToast } = useApp();
+  const { pushToast } = useApp();
+  const { user, profile } = useAuth();
   const [request, setRequest] = useState(25000);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [tab, setTab] = useState<"credit" | "invest" | "remboursement">("credit");
+  const [fund, setFund] = useState<GuaranteeFund | null>(null);
+  const [settings, setSettings] = useState<CreditSettings | null>(null);
+  const [contribution12m, setContribution12m] = useState(0);
+  const [credits, setCredits] = useState<Credit[]>([]);
+
+  useEffect(() => { const u = subscribeToGuaranteeFund(setFund); return () => u(); }, []);
+  useEffect(() => { const u = subscribeToCreditSettings(setSettings); return () => u(); }, []);
+  useEffect(() => {
+    if (!user) return;
+    const u = subscribeToWallet(user.id, (w) => setContribution12m(w?.contributionsLast12m ?? 0));
+    return () => u();
+  }, [user?.id]);
+  useEffect(() => {
+    if (!user) { setCredits([]); return; }
+    const u = subscribeToUserCredits(user.id, setCredits);
+    return () => u();
+  }, [user?.id]);
+
+  const ceiling = fund && settings && profile
+    ? computeCreditCeiling({ personalContribution12m: contribution12m, fund, settings, kycStatus: profile.kycStatus }).ceiling
+    : 0;
+
+  const latestCredit = credits[0] ?? null;
+
+  const submitRequest = async () => {
+    if (!user) return;
+    setSubmitting(true);
+    try {
+      await requestCredit(user.id, request);
+      pushToast({ tone: "success", title: "Demande envoyée", message: "En attente de validation par la coopérative." });
+    } catch (err: any) {
+      pushToast({ tone: "warn", title: "Demande refusée", message: err?.message ?? "Réessayez plus tard." });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-700 text-white rounded-3xl p-5 shadow-xl mb-4">
         <div className="flex items-center gap-2 mb-2"><CreditCard className="w-6 h-6" /><div className="font-black text-lg">Financement Agricole</div></div>
-        <div className="text-xs opacity-90">Encours de crédit</div>
-        <div className="text-4xl font-black mt-1">{creditAmount.toLocaleString("fr-FR")} <span className="text-base font-bold opacity-80">F</span></div>
+        <div className="text-xs opacity-90">Plafond estimé (fonds de garantie + cotisations)</div>
+        <div className="text-4xl font-black mt-1">{ceiling.toLocaleString("fr-FR")} <span className="text-base font-bold opacity-80">F</span></div>
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Taux</div><div className="font-black">3% / mois</div></div>
-          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Durée</div><div className="font-black">6 mois</div></div>
+          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Taux</div><div className="font-black">{settings ? `${(settings.monthlyRate * 100).toFixed(0)}% / mois` : "—"}</div></div>
+          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Durée</div><div className="font-black">{settings ? `${settings.termMonths} mois` : "—"}</div></div>
         </div>
       </div>
 
@@ -695,71 +763,60 @@ function CreditPage() {
           <div className="bg-violet-50 rounded-xl p-3 mb-3 text-center border border-violet-100">
             <Money value={request} size="md" />
           </div>
-          <button onClick={() => {
-            addTx({ type: "receive", amount: request, label: "Crédit Agricole" });
-            pushToast({ tone: "success", title: "Crédit accordé 🎉", message: `${request.toLocaleString("fr-FR")} F` });
-            setShowSuccess(true);
-            setTimeout(() => setShowSuccess(false), 2500);
-          }} disabled={showSuccess} className={`w-full py-4 rounded-2xl font-black text-white transition-all ${
-            showSuccess ? "bg-emerald-500" : "bg-gradient-to-br from-violet-600 to-purple-600"
-          }`}>
-            {showSuccess ? "✓ Accordé !" : "Soumettre la demande"}
+          <p className="text-xs text-stone-500 mb-3">
+            Le montant réellement accordé dépendra de vos cotisations et de l'état du fonds de garantie au moment de la validation par la coopérative — la demande n'est pas accordée instantanément.
+          </p>
+          <button onClick={submitRequest} disabled={submitting}
+            className="w-full py-4 rounded-2xl font-black text-white transition-all bg-gradient-to-br from-violet-600 to-purple-600 disabled:opacity-60">
+            {submitting ? "Envoi…" : "Soumettre la demande"}
           </button>
         </div>
       )}
 
       {tab === "remboursement" && (
         <div className="space-y-3">
-          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <div className="font-black text-stone-800">Statut de votre créance</div>
-              <span className="text-xs font-black bg-amber-100 text-amber-700 rounded-full px-3 py-1">En souffrance · 12 j</span>
+          {!latestCredit && (
+            <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+              <CreditCard className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+              <div className="text-sm text-stone-500 font-medium">Aucune demande de crédit</div>
             </div>
-            <div className="text-xs text-stone-500 mb-3">Prochaine échéance : 100 000 F, initialement due le 25/06/2026.</div>
-            <div className="grid grid-cols-3 gap-2 text-center mb-1">
-              <div className="bg-stone-50 rounded-xl p-2 border border-stone-200"><div className="text-[10px] text-stone-500">Courant</div><div className="w-2 h-2 rounded-full bg-stone-300 mx-auto mt-1" /></div>
-              <div className="bg-amber-50 rounded-xl p-2 border-2 border-amber-400"><div className="text-[10px] font-black text-amber-700">En souffrance</div><div className="w-2 h-2 rounded-full bg-amber-500 mx-auto mt-1" /></div>
-              <div className="bg-stone-50 rounded-xl p-2 border border-stone-200"><div className="text-[10px] text-stone-500">Douteux</div><div className="w-2 h-2 rounded-full bg-stone-300 mx-auto mt-1" /></div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-            <div className="font-black text-stone-800 mb-3">Échéancier</div>
-            {[
-              { label: "Échéance 1", amount: "100 000 F", date: "25/03/2026", status: "Payée",      color: "text-emerald-600" },
-              { label: "Échéance 2", amount: "100 000 F", date: "25/04/2026", status: "Payée",      color: "text-emerald-600" },
-              { label: "Échéance 3", amount: "100 000 F", date: "25/05/2026", status: "Payée",      color: "text-emerald-600" },
-              { label: "Échéance 4", amount: "100 000 F", date: "25/06/2026", status: "En retard",  color: "text-amber-600" },
-              { label: "Échéance 5", amount: "100 000 F", date: "25/07/2026", status: "À venir",    color: "text-stone-400" },
-            ].map((e, i) => (
-              <div key={i} className="flex items-center justify-between py-2.5 border-b border-stone-100 last:border-0">
-                <div><div className="font-bold text-stone-800 text-sm">{e.label}</div><div className="text-xs text-stone-400">{e.date}</div></div>
-                <div className="text-right"><div className="font-black text-stone-800 text-sm">{e.amount}</div><div className={`text-xs font-bold ${e.color}`}>{e.status}</div></div>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-            <div className="font-black text-stone-800 mb-3">Relances</div>
-            {[
-              { label: "Rappel préventif J-5",  done: true },
-              { label: "Notification à échéance (J0)", done: true },
-              { label: "1ère relance amiable (J+7)",   done: true },
-              { label: "2ème relance / visite terrain (J+15)", done: false },
-              { label: "Proposition de rééchelonnement (J+21)", done: false },
-            ].map((r, i) => (
-              <div key={i} className="flex items-center gap-3 py-2 border-b border-stone-50 last:border-0">
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${r.done ? "bg-emerald-500" : "bg-stone-200"}`}>
-                  {r.done ? <CheckCircle2 className="w-3 h-3 text-white" /> : <div className="w-1.5 h-1.5 bg-stone-400 rounded-full" />}
+          )}
+          {latestCredit && (
+            <>
+              <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-black text-stone-800">Statut de votre créance</div>
+                  <span className={`text-xs font-black rounded-full px-3 py-1 ${
+                    latestCredit.status === "active" ? "bg-emerald-100 text-emerald-700" :
+                    latestCredit.status === "pending" ? "bg-amber-100 text-amber-700" :
+                    latestCredit.status === "rejected" ? "bg-red-100 text-red-700" : "bg-stone-100 text-stone-600"
+                  }`}>{latestCredit.status}</span>
                 </div>
-                <div className={`text-sm ${r.done ? "text-stone-800 font-semibold" : "text-stone-400"}`}>{r.label}</div>
+                <div className="text-xs text-stone-500 mb-1">Demandé : {latestCredit.requestedAmount.toLocaleString("fr-FR")} F</div>
+                {latestCredit.approvedAmount !== null && (
+                  <div className="text-xs text-stone-500">Accordé : {latestCredit.approvedAmount.toLocaleString("fr-FR")} F</div>
+                )}
+                {latestCredit.rejectionReason && (
+                  <div className="text-xs text-red-600 mt-2">{latestCredit.rejectionReason}</div>
+                )}
               </div>
-            ))}
-            <button onClick={() => pushToast({ tone: "info", title: "Demande envoyée", message: "Votre demande de rééchelonnement a été transmise." })}
-              className="mt-3 w-full py-3 bg-amber-500 text-white rounded-xl font-bold text-sm">
-              Demander un rééchelonnement
-            </button>
-          </div>
+
+              {latestCredit.schedule.length > 0 && (
+                <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+                  <div className="font-black text-stone-800 mb-3">Échéancier</div>
+                  {latestCredit.schedule.map((e, i) => (
+                    <div key={i} className="flex items-center justify-between py-2.5 border-b border-stone-100 last:border-0">
+                      <div><div className="font-bold text-stone-800 text-sm">Échéance {i + 1}</div><div className="text-xs text-stone-400">{e.dueDate}</div></div>
+                      <div className="text-right">
+                        <div className="font-black text-stone-800 text-sm">{e.amount.toLocaleString("fr-FR")} F</div>
+                        <div className={`text-xs font-bold ${e.status === "paid" ? "text-emerald-600" : e.status === "late" ? "text-amber-600" : "text-stone-400"}`}>{e.status}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -862,6 +919,12 @@ function InsurancePage() {
 function AgriProtectPage() {
   const { pushToast } = useApp();
   const [submitted, setSubmitted] = useState(false);
+  const [gps, setGps] = useState<GeoPoint | null>(null);
+  const [gpsError, setGpsError] = useState("");
+
+  useEffect(() => {
+    getCurrentLocation().then(setGps).catch(() => setGpsError("Position GPS indisponible"));
+  }, []);
 
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
@@ -894,7 +957,9 @@ function AgriProtectPage() {
           <MapPin className="w-5 h-5 text-sky-600" />
           <div>
             <div className="text-xs font-bold text-sky-800">Géolocalisation automatique</div>
-            <div className="text-xs text-sky-700 font-mono">8.4167° N · -5.0167° O · 28/06/2026</div>
+            <div className="text-xs text-sky-700 font-mono">
+              {gps ? `${gps.lat.toFixed(4)}° N · ${gps.lng.toFixed(4)}° E · ${new Date().toLocaleDateString("fr-FR")}` : gpsError || "Localisation en cours…"}
+            </div>
           </div>
         </div>
 
@@ -1339,6 +1404,12 @@ function EntrepotsPage() {
 function RecyclagePage() {
   const { pushToast } = useApp();
   const dechetsCibles = ["Manioc 🥔", "Cacao 🍫", "Anacarde 🥜", "Maïs 🌽", "Palmier 🌴"];
+  const [gps, setGps] = useState<GeoPoint | null>(null);
+  const [gpsError, setGpsError] = useState("");
+
+  useEffect(() => {
+    getCurrentLocation().then(setGps).catch(() => setGpsError("Position GPS indisponible"));
+  }, []);
 
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
@@ -1379,7 +1450,9 @@ function RecyclagePage() {
             <MapPin className="w-5 h-5 text-emerald-600" />
             <div>
               <div className="text-xs font-bold text-emerald-800">Localisation automatique</div>
-              <div className="text-xs text-emerald-700 font-mono">8.4167° N · -5.0167° O</div>
+              <div className="text-xs text-emerald-700 font-mono">
+                {gps ? `${gps.lat.toFixed(4)}° N · ${gps.lng.toFixed(4)}° E` : gpsError || "Localisation en cours…"}
+              </div>
             </div>
           </div>
         </div>
@@ -1431,32 +1504,81 @@ function CarbonPage() {
 // ==================== MODULE MÉTÉO du champs ====================
 
 function WeatherPage() {
-  const { lang, userVillage } = useApp();
+  const { userVillage, weather, weatherForecast, weatherError } = useApp();
+
+  if (weatherError && !weather) {
+    return (
+      <div className="p-4 pb-24 max-w-xl mx-auto">
+        <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+          <Cloud className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+          <div className="text-sm text-stone-500 font-medium">{weatherError}</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!weather) {
+    return (
+      <div className="p-4 pb-24 max-w-xl mx-auto flex justify-center py-10">
+        <Loader className="w-6 h-6 text-sky-500 animate-spin" />
+      </div>
+    );
+  }
+
+  const advice = getAgriculturalAdvice(weather);
+
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
+      {weatherError && (
+        <div className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+          {weatherError} — dernier relevé connu affiché.
+        </div>
+      )}
       <div className="animate-fade-up relative bg-gradient-to-br from-sky-400 via-blue-500 to-indigo-600 text-white rounded-3xl p-5 shadow-xl mb-4 overflow-hidden">
         <div className="relative">
-          <div className="text-xs opacity-90 font-semibold uppercase tracking-wide flex items-center gap-1">📍 {userVillage ?? "Katiola"}, Côte d'Ivoire</div>
+          <div className="text-xs opacity-90 font-semibold uppercase tracking-wide flex items-center gap-1">📍 {userVillage || "Côte d'Ivoire"}</div>
           <div className="flex items-end justify-between mt-2">
-            <div><div className="text-6xl font-black tracking-tight leading-none">32°</div><div className="text-lg font-bold opacity-95 mt-1">☀️ Soleil</div></div>
-            <div className="text-7xl leading-none">☀️</div>
+            <div><div className="text-6xl font-black tracking-tight leading-none">{weather.temperature}°</div><div className="text-lg font-bold opacity-95 mt-1">Humidité {weather.humidity}% · Vent {weather.windSpeed} km/h</div></div>
+            <div className="text-7xl leading-none">{weather.description}</div>
           </div>
         </div>
       </div>
+
+      {weatherForecast && weatherForecast.length > 0 && (
+        <div className="animate-fade-up delay-1 flex gap-2 overflow-x-auto pb-2 mb-4">
+          {weatherForecast.slice(0, 5).map((d) => (
+            <div key={d.date} className="bg-white rounded-2xl p-3 border border-stone-200 shadow-sm text-center min-w-[72px]">
+              <div className="text-[10px] text-stone-500 font-semibold">{new Date(d.date).toLocaleDateString("fr-FR", { weekday: "short" })}</div>
+              <div className="text-2xl my-1">{d.icon}</div>
+              <div className="text-xs font-bold text-stone-800">{d.tempMax}°/{d.tempMin}°</div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="animate-fade-up delay-1 bg-gradient-to-br from-emerald-50 to-lime-50 border-2 border-emerald-200 rounded-2xl p-4 mb-4">
         <div className="flex items-start gap-3">
           <div className="text-5xl">🌱</div>
-          <div className="flex-1"><div className="font-bold text-emerald-900">Conseil agronomique</div><div className="text-sm text-emerald-900 font-medium leading-relaxed mt-1">Bonne période pour semer. Pluies attendues jeudi — préparez vos champs.</div></div>
-        </div>
-      </div>
-      <div className="animate-fade-up delay-2 bg-gradient-to-br from-amber-50 to-rose-50 border-2 border-amber-200 rounded-2xl p-4">
-        <div className="flex items-start gap-3">
-          <div className="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-            <AlertTriangle className="w-6 h-6 text-amber-700" />
+          <div className="flex-1">
+            <div className="font-bold text-emerald-900">Conseil agronomique</div>
+            <div className="text-sm text-emerald-900 font-medium leading-relaxed mt-1">
+              {advice.canPlant ? "Conditions favorables pour semer." : "Conditions défavorables pour semer actuellement."}{" "}
+              {advice.canHarvest ? "Bonne fenêtre pour récolter." : ""}
+            </div>
           </div>
-          <div className="flex-1"><div className="font-extrabold text-amber-900">Alerte fortes pluies 💧</div><div className="text-sm text-amber-800 mt-0.5">Jeudi et vendredi : risque d'inondation.</div></div>
         </div>
       </div>
+
+      {advice.warning && (
+        <div className="animate-fade-up delay-2 bg-gradient-to-br from-amber-50 to-rose-50 border-2 border-amber-200 rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-6 h-6 text-amber-700" />
+            </div>
+            <div className="flex-1"><div className="font-extrabold text-amber-900">Alerte météo</div><div className="text-sm text-amber-800 mt-0.5">{advice.warning}</div></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1484,7 +1606,11 @@ function PaymentsPage() {
   // Plafonds réglementaires BCEAO — Compte de base (KYC niveau 1)
   const PLAFOND_TX = 100000;
   const PLAFOND_MOIS = 500000;
-  const depenseMois = 185000; // simulateur — cumul du mois en cours
+  const OUTGOING_TYPES = new Set(["withdraw", "send", "credit_repayment"]);
+  const now = new Date();
+  const depenseMois = transactions
+    .filter((tx) => OUTGOING_TYPES.has(tx.type) && new Date(tx.createdAt).getMonth() === now.getMonth() && new Date(tx.createdAt).getFullYear() === now.getFullYear())
+    .reduce((sum, tx) => sum + tx.amount, 0);
   const overLimit = amount > PLAFOND_TX;
 
   const requestOtp = () => {
@@ -1573,6 +1699,9 @@ function PaymentsPage() {
         {otpStage === "sent" && (
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
             <div className="text-xs font-black text-indigo-800 mb-2">Saisissez le code OTP reçu par SMS</div>
+            <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mb-2">
+              ⚠️ Mode démonstration — aucune passerelle SMS réelle n'est encore connectée. N'importe quel code à 4 chiffres est accepté.
+            </div>
             <input type="tel" inputMode="numeric" maxLength={6} value={otpValue}
               onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ""))}
               placeholder="• • • •" className="w-full text-center tracking-[0.5em] font-black text-xl bg-white border border-indigo-200 rounded-xl py-2.5 mb-2 outline-none" />
@@ -1602,7 +1731,7 @@ function PaymentsPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="font-bold text-stone-800 text-sm truncate">{tx.label}</div>
-                  <div className="text-xs text-stone-500 font-medium">{tx.date}</div>
+                  <div className="text-xs text-stone-500 font-medium">{new Date(tx.createdAt).toLocaleDateString("fr-FR")}</div>
                 </div>
               </div>
               <div className={`font-black text-sm ${(tx.type === "send" || tx.type === "withdraw") ? "text-rose-700" : "text-emerald-700"}`}>
@@ -1789,28 +1918,48 @@ const PAGE_TITLES: Record<string, string> = {
 // ==================== ADMIN SPACE ====================
 
 function AdminSpace({ onLogout }: { onLogout: () => void }) {
-  const [tab, setTab] = useState<"dash" | "clients" | "txns" | "settings">("dash");
+  const [tab, setTab] = useState<"dash" | "clients" | "credits" | "txns" | "settings">("dash");
   const { online } = useApp();
+  const { user } = useAuth();
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [fund, setFund] = useState<GuaranteeFund | null>(null);
+  const [activeCreditsCount, setActiveCreditsCount] = useState(0);
+  const [pendingCredits, setPendingCredits] = useState<Credit[]>([]);
+  const [recentTxs, setRecentTxs] = useState<Transaction[]>([]);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
 
-  const members = [
-    { name: "Koné Mamadou",      role: "Agriculteur",  region: "Hambol",  status: "actif",    balance: 45000  },
-    { name: "Diabaté Aminata",   role: "Client",        region: "Bouaké", status: "actif",    balance: 120000 },
-    { name: "Soro Wonnan",       role: "Agriculteur",  region: "Katiola", status: "actif",    balance: 75000  },
-    { name: "Ouattara Ibrahim",  role: "Investisseur", region: "Abidjan", status: "inactif",  balance: 250000 },
-    { name: "Traoré Fatoumata",  role: "Agriculteur",  region: "Ferké",  status: "actif",    balance: 32000  },
-    { name: "Coulibaly Jean",    role: "Client",        region: "Daloa",  status: "suspendu", balance: 0      },
-  ];
+  useEffect(() => { listProfiles().then(setProfiles); }, []);
+  useEffect(() => { const u = subscribeToGuaranteeFund(setFund); return () => u(); }, []);
+  useEffect(() => { const u = subscribeToPendingCredits(setPendingCredits); return () => u(); }, []);
+  useEffect(() => { countActiveCredits().then(setActiveCreditsCount); }, [pendingCredits]);
+  useEffect(() => { listRecentTransactions(8).then(setRecentTxs); }, []);
+
+  const nameByUid = new Map(profiles.map((p) => [p.uid, p.fullName]));
 
   const kpis = [
-    { label: "Membres actifs", val: "1 247", icon: Users,    trend: "+12%", up: true  },
-    { label: "Volume mensuel", val: "48.2M F", icon: Activity, trend: "+8%",  up: true  },
-    { label: "Épargne totale", val: "124M F",  icon: DollarSign,trend:"+5%", up: true  },
-    { label: "Crédits cours",  val: "23",     icon: CreditCard,trend: "-2",  up: false },
+    { label: "Bénéficiaires enregistrés", val: profiles.length.toLocaleString("fr-FR"), icon: Users },
+    { label: "Fonds de garantie déposé",  val: `${(fund?.totalDeposited ?? 0).toLocaleString("fr-FR")} F`, icon: DollarSign },
+    { label: "Disponible pour crédits",   val: `${(fund?.availableForCredit ?? 0).toLocaleString("fr-FR")} F`, icon: Activity },
+    { label: "Crédits actifs",            val: activeCreditsCount.toLocaleString("fr-FR"), icon: CreditCard },
   ];
+
+  const decide = async (creditId: string, action: "approve" | "reject") => {
+    if (!user) return;
+    setDecidingId(creditId);
+    try {
+      if (action === "approve") await approveCredit(creditId, user.id);
+      else await rejectCredit(creditId, user.id, "Rejeté par la coopérative.");
+    } catch (err) {
+      console.error("Erreur décision crédit :", err);
+    } finally {
+      setDecidingId(null);
+    }
+  };
 
   const navItems = [
     { id: "dash",     icon: PieChart,  label: "Vue d'ensemble" },
     { id: "clients",  icon: Users,     label: "Membres"         },
+    { id: "credits",  icon: CreditCard,label: "Crédits"         },
     { id: "txns",     icon: Activity,  label: "Transactions"    },
     { id: "settings", icon: Settings,  label: "Paramètres"      },
   ] as const;
@@ -1864,7 +2013,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-black text-stone-900">Tableau de bord</h2>
-              <p className="text-xs text-stone-400 mt-0.5">Mis à jour le 28 juin 2026</p>
+              <p className="text-xs text-stone-400 mt-0.5">Données en temps réel</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {kpis.map((k, i) => {
@@ -1876,7 +2025,6 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
                     </div>
                     <div className="font-black text-stone-900 text-xl">{k.val}</div>
                     <div className="text-xs text-stone-500 mt-0.5">{k.label}</div>
-                    <div className={`text-xs font-bold mt-2 ${k.up ? "text-emerald-600" : "text-stone-400"}`}>{k.trend} ce mois</div>
                   </div>
                 );
               })}
@@ -1886,85 +2034,95 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
             <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
               <div className="px-4 py-3 border-b border-stone-100 flex justify-between items-center">
                 <span className="font-bold text-stone-800 text-sm">Activité récente</span>
-                <button className="text-xs text-violet-600 font-bold">Tout voir</button>
               </div>
-              {[
-                { name: "Koné Mamadou",   action: "Cotisation AgriSusu",     time: "il y a 5 min",  amount: "+5 000 F",  pos: true  },
-                { name: "Diabaté Aminata",action: "Investissement Anacarde",  time: "il y a 23 min", amount: "+50 000 F", pos: true  },
-                { name: "Soro Wonnan",    action: "Crédit accordé",           time: "il y a 1h",     amount: "-25 000 F", pos: false },
-                { name: "Traoré Fatouma",action: "Déclaration sinistre",     time: "il y a 2h",     amount: "—",         pos: null  },
-              ].map((it, i) => (
-                <div key={i} className="px-4 py-3 flex items-center gap-3 border-b border-stone-50 last:border-0">
-                  <Avatar name={it.name} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-stone-800 text-sm truncate">{it.name}</div>
-                    <div className="text-xs text-stone-500">{it.action} · {it.time}</div>
+              {recentTxs.length === 0 && (
+                <div className="px-4 py-6 text-center text-sm text-stone-400">Aucune transaction pour le moment</div>
+              )}
+              {recentTxs.map((tx) => {
+                const pos = ["deposit", "receive", "payout", "credit_disbursement"].includes(tx.type);
+                return (
+                  <div key={tx.id} className="px-4 py-3 flex items-center gap-3 border-b border-stone-50 last:border-0">
+                    <Avatar name={nameByUid.get(tx.userId) ?? "?"} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-stone-800 text-sm truncate">{nameByUid.get(tx.userId) ?? tx.userId}</div>
+                      <div className="text-xs text-stone-500">{tx.label} · {new Date(tx.createdAt).toLocaleString("fr-FR")}</div>
+                    </div>
+                    <div className={`text-sm font-black flex-shrink-0 ${pos ? "text-emerald-600" : "text-rose-600"}`}>
+                      {pos ? "+" : "-"}{tx.amount.toLocaleString("fr-FR")} F
+                    </div>
                   </div>
-                  <div className={`text-sm font-black flex-shrink-0 ${it.pos === true ? "text-emerald-600" : it.pos === false ? "text-rose-600" : "text-stone-400"}`}>
-                    {it.amount}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            {/* Alertes */}
-            <div className="space-y-2">
-              <p className="text-[11px] font-black text-stone-400 uppercase tracking-widest">Alertes</p>
-              {[
-                { warn: true,  msg: "3 crédits arrivent à échéance cette semaine" },
-                { warn: false, msg: "Mise à jour des tarifs Wave prévue le 01/07"  },
-              ].map((a, i) => (
-                <div key={i} className={`flex items-start gap-3 p-3 rounded-xl ${a.warn ? "bg-amber-50 border border-amber-200" : "bg-sky-50 border border-sky-200"}`}>
-                  <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${a.warn ? "text-amber-600" : "text-sky-600"}`} />
-                  <p className="text-xs text-stone-700 font-medium">{a.msg}</p>
-                </div>
-              ))}
-            </div>
+            {pendingCredits.length > 0 && (
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600" />
+                <p className="text-xs text-stone-700 font-medium">{pendingCredits.length} demande(s) de crédit en attente de validation</p>
+              </div>
+            )}
           </div>
         )}
 
         {/* ── MEMBRES ── */}
         {tab === "clients" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-black text-stone-900">Membres</h2>
-              <button className="flex items-center gap-1.5 bg-violet-600 text-white rounded-xl px-3 py-2 text-xs font-bold">
-                <UserPlus className="w-3.5 h-3.5" /> Ajouter
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-                <input type="text" placeholder="Rechercher…"
-                  className="w-full pl-9 pr-4 py-2.5 bg-white border border-stone-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-400" />
+            <h2 className="text-lg font-black text-stone-900">Membres</h2>
+            {profiles.length === 0 && (
+              <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+                <Users className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                <div className="text-sm text-stone-500 font-medium">Aucun bénéficiaire enregistré</div>
               </div>
-              <button className="flex items-center gap-1.5 bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-bold text-stone-600">
-                <Filter className="w-3.5 h-3.5" /> Filtrer
-              </button>
-            </div>
+            )}
             <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
-              {members.map((m, i) => (
-                <div key={i} className="px-4 py-3.5 flex items-center gap-3 border-b border-stone-50 last:border-0">
-                  <Avatar name={m.name} size="md" />
+              {profiles.map((m) => (
+                <div key={m.uid} className="px-4 py-3.5 flex items-center gap-3 border-b border-stone-50 last:border-0">
+                  <Avatar name={m.fullName} size="md" />
                   <div className="flex-1 min-w-0">
-                    <div className="font-bold text-stone-900 text-sm">{m.name}</div>
-                    <div className="text-xs text-stone-500">{m.role} · {m.region}</div>
+                    <div className="font-bold text-stone-900 text-sm">{m.fullName}</div>
+                    <div className="text-xs text-stone-500">{m.role} · {m.village}, {m.region}</div>
                   </div>
-                  <div className="text-right flex-shrink-0 mr-2">
-                    <div className="font-black text-stone-800 text-sm">{m.balance.toLocaleString("fr-FR")} F</div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      m.status === "actif" ? "bg-emerald-100 text-emerald-700" :
-                      m.status === "inactif" ? "bg-stone-100 text-stone-500" :
-                      "bg-red-100 text-red-700"
-                    }`}>{m.status}</span>
-                  </div>
-                  <button className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-400">
-                    <Edit className="w-3.5 h-3.5" />
-                  </button>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                    m.kycStatus === "pending" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+                  }`}>{m.kycStatus === "pending" ? "KYC en attente" : m.kycStatus}</span>
                 </div>
               ))}
             </div>
-            <p className="text-xs text-center text-stone-400">{members.length} membres affichés sur 1 247</p>
+            <p className="text-xs text-center text-stone-400">{profiles.length} membre(s) enregistré(s)</p>
+          </div>
+        )}
+
+        {/* ── CRÉDITS ── */}
+        {tab === "credits" && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-black text-stone-900">Demandes de crédit en attente</h2>
+            {pendingCredits.length === 0 && (
+              <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+                <CreditCard className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                <div className="text-sm text-stone-500 font-medium">Aucune demande en attente</div>
+              </div>
+            )}
+            {pendingCredits.map((c) => (
+              <div key={c.id} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm space-y-2">
+                <div className="flex items-center gap-3">
+                  <Avatar name={nameByUid.get(c.userId) ?? "?"} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-stone-900 text-sm">{nameByUid.get(c.userId) ?? c.userId}</div>
+                    <div className="text-xs text-stone-500">Demandé le {new Date(c.requestedAt).toLocaleDateString("fr-FR")}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-center">
+                  <div className="bg-stone-50 rounded-xl p-2 border border-stone-200"><div className="text-[10px] text-stone-500">Demandé</div><div className="font-bold text-stone-800 text-sm">{c.requestedAmount.toLocaleString("fr-FR")} F</div></div>
+                  <div className="bg-violet-50 rounded-xl p-2 border border-violet-100"><div className="text-[10px] text-violet-600">Plafond calculé</div><div className="font-bold text-violet-700 text-sm">{(c.calculationSnapshot?.ceiling ?? 0).toLocaleString("fr-FR")} F</div></div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => decide(c.id, "reject")} disabled={decidingId === c.id}
+                    className="flex-1 py-2.5 bg-red-50 text-red-600 rounded-xl font-bold text-xs disabled:opacity-50">Rejeter</button>
+                  <button onClick={() => decide(c.id, "approve")} disabled={decidingId === c.id}
+                    className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs disabled:opacity-50">Approuver & décaisser</button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -1972,28 +2130,30 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
         {tab === "txns" && (
           <div className="space-y-4">
             <h2 className="text-lg font-black text-stone-900">Transactions</h2>
+            {recentTxs.length === 0 && (
+              <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+                <Activity className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                <div className="text-sm text-stone-500 font-medium">Aucune transaction enregistrée</div>
+              </div>
+            )}
             <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
-              {[
-                { id:"TXN-001", label:"AgriSusu — Koné M.",          type:"entree",  amount:5000,  date:"28/06 · 09h05" },
-                { id:"TXN-002", label:"Investissement Anacarde",       type:"entree",  amount:50000, date:"28/06 · 08h42" },
-                { id:"TXN-003", label:"Crédit Agricole — Soro",       type:"sortie",  amount:25000, date:"28/06 · 08h15" },
-                { id:"TXN-004", label:"Envoi Wave — Traoré F.",        type:"sortie",  amount:10000, date:"27/06 · 17h30" },
-                { id:"TXN-005", label:"Indemnité Sécheresse",          type:"entree",  amount:15000, date:"27/06 · 14h20" },
-                { id:"TXN-006", label:"Abonnement coopérative",        type:"sortie",  amount:2000,  date:"27/06 · 11h00" },
-              ].map(tx => (
-                <div key={tx.id} className="px-4 py-3.5 flex items-center gap-3 border-b border-stone-50 last:border-0">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${tx.type === "entree" ? "bg-emerald-100" : "bg-rose-100"}`}>
-                    {tx.type === "entree" ? <ArrowDownLeft className="w-4 h-4 text-emerald-600" /> : <ArrowUpRight className="w-4 h-4 text-rose-600" />}
+              {recentTxs.map((tx) => {
+                const entree = ["deposit", "receive", "payout", "credit_disbursement"].includes(tx.type);
+                return (
+                  <div key={tx.id} className="px-4 py-3.5 flex items-center gap-3 border-b border-stone-50 last:border-0">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${entree ? "bg-emerald-100" : "bg-rose-100"}`}>
+                      {entree ? <ArrowDownLeft className="w-4 h-4 text-emerald-600" /> : <ArrowUpRight className="w-4 h-4 text-rose-600" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-stone-800 text-sm truncate">{nameByUid.get(tx.userId) ?? tx.userId} — {tx.label}</div>
+                      <div className="text-xs text-stone-400">{new Date(tx.createdAt).toLocaleString("fr-FR")}</div>
+                    </div>
+                    <div className={`font-black text-sm flex-shrink-0 ${entree ? "text-emerald-600" : "text-rose-600"}`}>
+                      {entree ? "+" : "-"}{tx.amount.toLocaleString("fr-FR")} F
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-stone-800 text-sm truncate">{tx.label}</div>
-                    <div className="text-xs text-stone-400">{tx.id} · {tx.date}</div>
-                  </div>
-                  <div className={`font-black text-sm flex-shrink-0 ${tx.type === "entree" ? "text-emerald-600" : "text-rose-600"}`}>
-                    {tx.type === "entree" ? "+" : "-"}{tx.amount.toLocaleString("fr-FR")} F
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -2043,6 +2203,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
 function ClientSpace({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<"apercu" | "projets" | "rapports" | "profil">("apercu");
   const { online } = useApp();
+  const { profile } = useAuth();
 
   const projects = [
     { name: "Anacarde Hambol",      emoji: "🥜", target: 500000, raised: 310000, ret: "12%", status: "En cours",  echeance: "Déc 2026" },
@@ -2107,11 +2268,11 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
         {tab === "apercu" && (
           <div className="space-y-5">
             <div className="flex items-center gap-3">
-              <Avatar name="Diabaté A." size="lg" />
+              <Avatar name={profile?.fullName || "?"} size="lg" />
               <div>
                 <div className="text-xs text-stone-400 font-medium">Bonjour 👋</div>
-                <div className="font-black text-stone-900 text-xl">Diabaté Aminata</div>
-                <div className="text-xs text-stone-500">Investisseur · Bouaké</div>
+                <div className="font-black text-stone-900 text-xl">{profile?.fullName}</div>
+                <div className="text-xs text-stone-500">Investisseur · {profile?.region}</div>
               </div>
             </div>
 
@@ -2265,20 +2426,22 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
             <h2 className="text-lg font-black text-stone-900">Mon profil</h2>
             <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-5">
               <div className="flex items-center gap-4 mb-5">
-                <Avatar name="Diabaté A." size="xl" />
+                <Avatar name={profile?.fullName || "?"} size="xl" />
                 <div>
-                  <div className="font-black text-stone-900 text-lg">Diabaté Aminata</div>
-                  <div className="text-sm text-stone-500">Investisseur · Bouaké</div>
-                  <div className="mt-2 inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full px-3 py-1">
-                    <BadgeCheck className="w-3.5 h-3.5" /> Compte vérifié
-                  </div>
+                  <div className="font-black text-stone-900 text-lg">{profile?.fullName}</div>
+                  <div className="text-sm text-stone-500">Investisseur · {profile?.region}</div>
+                  {profile?.kycStatus !== "pending" && (
+                    <div className="mt-2 inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full px-3 py-1">
+                      <BadgeCheck className="w-3.5 h-3.5" /> Compte vérifié
+                    </div>
+                  )}
                 </div>
               </div>
               {[
-                { label:"Email",        value:"d.aminata@email.ci",      icon: Mail   },
-                { label:"Téléphone",    value:"+225 07 12 34 56 78",     icon: Phone  },
-                { label:"Membre depuis",value:"Février 2025",            icon: BadgeCheck },
-                { label:"Région",       value:"Bouaké, Côte d'Ivoire",  icon: MapPin },
+                { label:"Email",        value: profile?.email || "—",      icon: Mail   },
+                { label:"Téléphone",    value: profile?.phone || "—",      icon: Phone  },
+                { label:"Coopérative",  value: profile?.cooperativeId || "—", icon: BadgeCheck },
+                { label:"Région",       value: `${profile?.village ?? ""}, ${profile?.region ?? ""}`, icon: MapPin },
               ].map((r,i)=>{
                 const Icon = r.icon;
                 return (
@@ -2308,7 +2471,7 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
 // ==================== MAIN SHELL ====================
 
 function Shell() {
-  const { user } = useAuth();
+  const { user, profile, profileLoading } = useAuth();
   const [page, setPage] = useState<AllPages>("home");
   const [pageKey, setPageKey] = useState(0);
 
@@ -2316,13 +2479,24 @@ function Shell() {
 
   const handleLogout = () => window.location.reload();
 
-  // Role detection via email (demo)
-  const role =
-    (user as any).email?.includes("admin")  ? "admin"  :
-    (user as any).email?.includes("client") ? "client" : "farmer";
+  if (profileLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-stone-50">
+        <Loader className="w-6 h-6 text-green-600 animate-spin" />
+      </div>
+    );
+  }
+
+  // Compte Auth sans profil bénéficiaire (nouvelle inscription ou compte
+  // existant migré) : on force l'enregistrement réel avant tout accès.
+  if (!profile) {
+    return <BeneficiaryOnboardingForm uid={user.id} email={user.email} onDone={() => {}} />;
+  }
+
+  const role = profile.role;
 
   if (role === "admin")  return <AdminSpace  onLogout={handleLogout} />;
-  if (role === "client") return <ClientSpace onLogout={handleLogout} />;
+  if (role === "investor") return <ClientSpace onLogout={handleLogout} />;
 
   // ── FARMER ──
   const bottomPages = new Set<string>(["home", "weather", "parcelles", "payments", "identity"]);

@@ -1,0 +1,95 @@
+rules_version = '2';
+
+// Règles de sécurité Firestore pour COOPAVEC.
+// À DÉPLOYER MANUELLEMENT (firebase deploy --only firestore:rules) après
+// relecture — ce fichier n'est pas déployé automatiquement par l'agent.
+//
+// Limite connue : les écritures sur `wallets` et `guaranteeFund/global` sont
+// validées côté client (montants positifs, plafonds de sécurité) mais ne
+// sont pas cryptographiquement vérifiées contre le document `contributions`
+// correspondant — cela nécessiterait une Cloud Function (plan Blaze) pour
+// une garantie bancaire complète. À prévoir avant un déploiement à grande
+// échelle avec de vrais fonds.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function myRole() {
+      return get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role;
+    }
+    function isAdmin() { return isSignedIn() && myRole() == "admin"; }
+
+    match /profiles/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.role in ["farmer", "investor"]; // "admin" attribué manuellement en console
+      allow update: if isAdmin()
+        || (isOwner(uid)
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.verificationCode == resource.data.verificationCode);
+    }
+
+    match /wallets/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid) && request.resource.data.balance == 0;
+      // Un bénéficiaire ne peut qu'augmenter son solde (cotisation, crédit décaissé),
+      // jamais le diminuer directement ni au-delà d'un plafond raisonnable par écriture.
+      allow update: if isAdmin()
+        || (isOwner(uid)
+            && request.resource.data.balance >= resource.data.balance
+            && request.resource.data.balance - resource.data.balance <= 5000000);
+    }
+
+    match /parcels/{parcelId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.ownerId == request.auth.uid);
+    }
+
+    match /contributions/{id} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.amount > 0
+        && request.resource.data.status == "confirmed";
+      allow update, delete: if isAdmin();
+    }
+
+    match /guaranteeFund/global {
+      allow read: if isSignedIn();
+      // Toute augmentation vient d'une cotisation ; seule l'admin peut faire baisser
+      // le fonds disponible (décaissement de crédit) au-delà de la mise à jour du ratio.
+      allow write: if isAdmin()
+        || (isSignedIn()
+            && request.resource.data.totalDeposited >= resource.data.totalDeposited
+            && request.resource.data.totalDeposited - resource.data.totalDeposited <= 5000000
+            && request.resource.data.totalDisbursedAsCredits == resource.data.totalDisbursedAsCredits);
+    }
+
+    match /settings/credit {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /credits/{id} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow list: if isAdmin() || isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == "pending"
+        && request.resource.data.approvedAmount == null;
+      allow update: if isAdmin(); // seule l'admin approuve, rejette ou décaisse
+    }
+
+    match /transactions/{id} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow list: if isAdmin() || isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false; // historique immuable
+    }
+  }
+}

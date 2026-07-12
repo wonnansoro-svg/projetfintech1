@@ -89,26 +89,10 @@ export async function getWeatherForecast(lat: number, lng: number): Promise<{
     return result;
   } catch (error) {
     console.error("Weather fetch error:", error);
-    // Retourner des données mockées si API échoue
-    return {
-      current: {
-        temperature: 28,
-        humidity: 65,
-        windSpeed: 12,
-        rainProbability: 10,
-        rainfall: 0,
-        description: "☀️",
-      },
-      forecast: Array.from({ length: 7 }, (_, i) => ({
-        date: new Date(Date.now() + i * 86400000).toISOString().slice(0, 10),
-        tempMax: 28 + Math.random() * 4,
-        tempMin: 22 + Math.random() * 3,
-        rainProbability: Math.random() * 80,
-        rainfall: Math.random() * 10,
-        windSpeed: 10 + Math.random() * 10,
-        icon: ["☀️", "🌤️", "⛅", "🌧️"][Math.floor(Math.random() * 4)],
-      })),
-    };
+    // Pas de connexion : on retombe sur le dernier relevé connu (même ancien)
+    // plutôt que d'inventer une météo. S'il n'y en a aucun, l'erreur remonte.
+    if (cached) return (JSON.parse(cached) as { data: { current: WeatherData; forecast: ForecastDay[] } }).data;
+    throw error instanceof Error ? error : new Error("Impossible de récupérer la météo.");
   }
 }
 

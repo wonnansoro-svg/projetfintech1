@@ -1,7 +1,9 @@
 /// ✅ BON : Une seule ligne "import ... from 'firebase/auth'"
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
 import { auth } from '../firebase';
+import { subscribeToProfile } from '../services/profileService';
+import type { Profile } from '../types/firestore';
 
 // La structure de ton utilisateur
 interface User {
@@ -12,6 +14,8 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
+  profile: Profile | null;
+  profileLoading: boolean;
   login: (email: string, mdp: string) => Promise<void>;
   signup: (email: string, mdp: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -22,27 +26,43 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [loading, setLoading] = useState(true);
 
   // Ce useEffect écoute les changements de statut de Firebase
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
       if (firebaseUser) {
-        // Utilisateur connecté
+        // Utilisateur connecté — le nom affiché vient du profil Firestore
+        // (mis à jour dès qu'il est chargé, voir l'effet ci-dessous)
         setUser({
           id: firebaseUser.uid,
           email: firebaseUser.email,
-          name: "Agriculteur", // On pourra changer ça plus tard avec une base de données
+          name: firebaseUser.email ?? "Agriculteur",
         });
       } else {
         // Utilisateur déconnecté
         setUser(null);
+        setProfile(null);
+        setProfileLoading(true);
       }
       setLoading(false); // Fin du chargement
     });
 
     return () => unsubscribe(); // Nettoyage quand le composant est détruit
   }, []);
+
+  // Abonnement au profil bénéficiaire Firestore (null tant qu'il n'existe pas encore)
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribe = subscribeToProfile(user.id, (p) => {
+      setProfile(p);
+      setProfileLoading(false);
+      if (p) setUser((prev) => (prev ? { ...prev, name: p.fullName } : prev));
+    });
+    return () => unsubscribe();
+  }, [user?.id]);
 
   // Fonction de connexion
   const login = async (email: string, mdp: string) => {
@@ -77,7 +97,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, loading }}>
+    <AuthContext.Provider value={{ user, profile, profileLoading, login, signup, logout, loading }}>
       {/* On n'affiche l'application que lorsque Firebase a fini de vérifier la session */}
       {!loading && children} 
     </AuthContext.Provider>

@@ -2,29 +2,14 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import type { Lang } from "../i18n";
 import { getWeatherForecast, type WeatherData, type ForecastDay } from "../lib/weather";
 import { getCurrentLocation, type GeoPoint } from "../lib/geolocation";
+import { subscribeToParcelsByOwner } from "../services/parcelService";
+import { subscribeToWallet } from "../services/walletService";
+import { subscribeToTransactionsByUser, recordTransaction } from "../services/transactionService";
+import { useAuth } from "./AuthContext";
+import type { Parcel as FirestoreParcel, Transaction as FirestoreTx } from "../types/firestore";
 
-export interface SusuMember {
-  name: string;
-  amount: number;
-  paid: boolean;
-  avatarColor: string;
-}
-
-export interface Parcel {
-  id: string;
-  name: string;
-  hectares: number;
-  crop: "maize" | "millet" | "rice" | "anacarde" | "cacao" | "manioc";
-  gps: { lat: number; lng: number } | null;
-}
-
-export interface Tx {
-  id: string;
-  type: "deposit" | "withdraw" | "send" | "receive" | "payout";
-  amount: number;
-  date: string;
-  label: string;
-}
+export type Parcel = FirestoreParcel;
+export type Tx = FirestoreTx;
 
 export interface Toast {
   id: number;
@@ -40,25 +25,17 @@ interface AppState {
   userName: string;
   userVillage: string;
   balance: number;
-  setBalance: (n: number) => void;
-  savingsGoal: number;
-  weeklySaved: number;
-  susuMembers: SusuMember[];
-  nextPayoutDays: number;
   parcels: Parcel[];
-  addParcel: (p: Omit<Parcel, "id">) => void;
   transactions: Tx[];
   carbonCredits: number;
   co2Saved: number;
   insuranceTriggered: boolean;
-  creditAmount: number;
-  creditDueDays: number;
-  identity: { name: string; phone: string; village: string; verified: boolean };
-  addTx: (tx: Omit<Tx, "id" | "date">) => void;
+  addTx: (tx: Omit<Tx, "id" | "userId" | "createdAt">) => void;
   pushToast: (t: Omit<Toast, "id">) => void;
   toasts: Toast[];
   weather: WeatherData | null;
   weatherForecast: ForecastDay[] | null;
+  weatherError: string | null;
   currentLocation: GeoPoint | null;
   loadWeather: (lat: number, lng: number) => Promise<void>;
 }
@@ -66,53 +43,43 @@ interface AppState {
 const AppContext = createContext<AppState | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const { user, profile } = useAuth();
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem("lang") as Lang) || "fr");
   const [online, setOnline] = useState(navigator.onLine);
-  const [balance, setBalance] = useState(45000);
+  const [balance, setBalance] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [weatherForecast, setWeatherForecast] = useState<ForecastDay[] | null>(null);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
   const [currentLocation, setCurrentLocation] = useState<GeoPoint | null>(null);
 
-  const savingsGoal = 100000;
-  const weeklySaved = 5000;
-  const userName = "Mamadou";
-  const userVillage = "Thiès";
+  const userName = profile?.fullName ?? "";
+  const userVillage = profile?.village ?? "";
 
-  const [susuMembers] = useState<SusuMember[]>([
-    { name: "Aminata", amount: 5000, paid: true, avatarColor: "#f97316" },
-    { name: "Moussa", amount: 5000, paid: true, avatarColor: "#8b5cf6" },
-    { name: "Fatou", amount: 5000, paid: true, avatarColor: "#ec4899" },
-    { name: "Ibrahima", amount: 5000, paid: false, avatarColor: "#06b6d4" },
-    { name: "Aïssatou", amount: 5000, paid: false, avatarColor: "#10b981" },
-    { name: "Ousmane", amount: 5000, paid: false, avatarColor: "#f59e0b" },
-  ]);
-  const nextPayoutDays = 4;
-  const [parcels, setParcels] = useState<Parcel[]>([
-    { id: "p1", name: "Parcelle Nord", hectares: 1.2, crop: "maize", gps: { lat: 14.6937, lng: -17.4441 } },
-    { id: "p2", name: "Parcelle Rivière", hectares: 0.8, crop: "rice", gps: { lat: 14.7012, lng: -17.4500 } },
-    { id: "p3", name: "Parcelle Sud", hectares: 0.5, crop: "millet", gps: null },
-  ]);
-  const addParcel = (p: Omit<Parcel, "id">) => {
-    setParcels((prev) => [...prev, { ...p, id: "p" + Date.now() }]);
-  };
-  const [transactions, setTransactions] = useState<Tx[]>([
-    { id: "t1", type: "deposit", amount: 5000, date: "2026-01-15", label: "Tontine — semaine 3" },
-    { id: "t2", type: "receive", amount: 30000, date: "2026-01-08", label: "Mon tour de tontine" },
-    { id: "t3", type: "send", amount: 2000, date: "2026-01-05", label: "À Aminata" },
-    { id: "t4", type: "payout", amount: 15000, date: "2025-12-20", label: "Indemnité sécheresse" },
-  ]);
-  const [carbonCredits] = useState(12);
-  const [co2Saved] = useState(2.4);
-  const [insuranceTriggered] = useState(true);
-  const [creditAmount] = useState(50000);
-  const [creditDueDays] = useState(45);
-  const [identity] = useState({
-    name: "Mamadou Diop",
-    phone: "+221 77 123 45 67",
-    village: "Thiès",
-    verified: true,
-  });
+  const [parcels, setParcels] = useState<Parcel[]>([]);
+
+  useEffect(() => {
+    if (!user) { setParcels([]); return; }
+    const unsubscribe = subscribeToParcelsByOwner(user.id, setParcels);
+    return () => unsubscribe();
+  }, [user?.id]);
+
+  const [transactions, setTransactions] = useState<FirestoreTx[]>([]);
+  useEffect(() => {
+    if (!user) { setTransactions([]); return; }
+    const unsubscribe = subscribeToTransactionsByUser(user.id, setTransactions);
+    return () => unsubscribe();
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user) { setBalance(0); return; }
+    const unsubscribe = subscribeToWallet(user.id, (wallet) => setBalance(wallet?.balance ?? 0));
+    return () => unsubscribe();
+  }, [user?.id]);
+
+  const [carbonCredits] = useState(0);
+  const [co2Saved] = useState(0);
+  const [insuranceTriggered] = useState(false);
 
   useEffect(() => { localStorage.setItem("lang", lang); }, [lang]);
 
@@ -138,39 +105,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { current, forecast } = await getWeatherForecast(lat, lng);
       setWeather(current);
       setWeatherForecast(forecast);
+      setWeatherError(null);
     } catch (error) {
       console.error("Weather load error:", error);
+      setWeatherError("Météo indisponible — vérifiez votre connexion.");
     }
   };
 
   // Charger météo et localisation au montage
   useEffect(() => {
-    getCurrentLocation().then((loc: any) => {
-      setCurrentLocation(loc);
-      loadWeather(loc.lat, loc.lng);
-    });
+    getCurrentLocation()
+      .then((loc) => {
+        setCurrentLocation(loc);
+        loadWeather(loc.lat, loc.lng);
+      })
+      .catch((error) => {
+        console.error("Location error:", error);
+        setWeatherError("Position GPS indisponible — autorisez la localisation pour voir la météo locale.");
+      });
   }, []);
 
-  const addTx = (tx: Omit<Tx, "id" | "date">) => {
-    setTransactions((prev) => [
-      { ...tx, id: "t" + Date.now(), date: new Date().toISOString().slice(0, 10) },
-      ...prev,
-    ]);
-    if (tx.type === "deposit" || tx.type === "receive" || tx.type === "payout") {
-      setBalance((b) => b + tx.amount);
-    } else {
-      setBalance((b) => Math.max(0, b - tx.amount));
-    }
+  const addTx = (tx: Omit<Tx, "id" | "userId" | "createdAt">) => {
+    if (!user) return;
+    // Le solde et l'historique se mettent à jour via les abonnements Firestore ci-dessus.
+    recordTransaction(user.id, tx).catch((err) => console.error("Erreur d'enregistrement de la transaction :", err));
   };
 
   return (
     <AppContext.Provider
       value={{
         lang, setLang, online, userName, userVillage,
-        balance, setBalance, savingsGoal, weeklySaved,
-        susuMembers, nextPayoutDays, parcels, addParcel, transactions, carbonCredits, co2Saved,
-        insuranceTriggered, creditAmount, creditDueDays, identity, addTx,
-        pushToast, toasts, weather, weatherForecast, currentLocation, loadWeather,
+        balance,
+        parcels, transactions, carbonCredits, co2Saved,
+        insuranceTriggered, addTx,
+        pushToast, toasts, weather, weatherForecast, weatherError, currentLocation, loadWeather,
       }}
     >
       {children}
