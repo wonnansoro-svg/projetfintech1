@@ -5,12 +5,14 @@ import { db } from "../firebase";
 import { getProfile } from "./profileService";
 import { DEFAULT_GUARANTEE_FUND, DEFAULT_CREDIT_SETTINGS, FUND_DOC, CREDIT_SETTINGS_DOC, getGuaranteeFund, getCreditSettings } from "./fundService";
 import { computeCreditCeiling, isEligibleForCredit, buildRepaymentSchedule } from "../lib/credit";
+import { buildNotification } from "./notificationService";
 import type { Credit, CreditSettings, GuaranteeFund, Wallet } from "../types/firestore";
 
 const CREDITS = "credits";
 const WALLETS = "wallets";
 const TRANSACTIONS = "transactions";
 const CONTRIBUTIONS = "contributions";
+const NOTIFICATIONS = "notifications";
 
 async function countConfirmedContributions(userId: string): Promise<number> {
   const q = query(collection(db, CONTRIBUTIONS), where("userId", "==", userId));
@@ -91,11 +93,10 @@ export async function approveCredit(creditId: string, adminUid: string): Promise
 
     const approvedAmount = Math.min(credit.requestedAmount, ceiling);
     if (approvedAmount < settings.minLoanAmount) {
-      tx.set(creditRef, {
-        ...credit, status: "rejected",
-        rejectionReason: "Plafond insuffisant au moment de la validation (fonds de garantie trop sollicité).",
-        decidedAt: now, decidedBy: adminUid,
-      });
+      const reason = "Plafond insuffisant au moment de la validation (fonds de garantie trop sollicité).";
+      tx.set(creditRef, { ...credit, status: "rejected", rejectionReason: reason, decidedAt: now, decidedBy: adminUid });
+      const notif = buildNotification(credit.userId, "Demande de crédit refusée", reason);
+      tx.set(doc(db, NOTIFICATIONS, notif.id), notif);
       return { disbursed: false };
     }
 
@@ -116,12 +117,22 @@ export async function approveCredit(creditId: string, adminUid: string): Promise
       id: txRef.id, userId: credit.userId, type: "credit_disbursement", amount: approvedAmount,
       label: "Crédit agricole accordé", relatedCreditId: credit.id, createdAt: now,
     });
+
+    const notif = buildNotification(credit.userId, "Crédit accordé 🎉", `Votre crédit de ${approvedAmount.toLocaleString("fr-FR")} F a été validé et versé sur votre solde.`);
+    tx.set(doc(db, NOTIFICATIONS, notif.id), notif);
+
     return { disbursed: true };
   });
 }
 
 export async function rejectCredit(creditId: string, adminUid: string, reason: string): Promise<void> {
+  const creditSnap = await getDoc(doc(db, CREDITS, creditId));
   await updateDoc(doc(db, CREDITS, creditId), {
     status: "rejected", rejectionReason: reason, decidedAt: Date.now(), decidedBy: adminUid,
   });
+  if (creditSnap.exists()) {
+    const credit = creditSnap.data() as Credit;
+    const notif = buildNotification(credit.userId, "Demande de crédit refusée", reason);
+    await setDoc(doc(db, NOTIFICATIONS, notif.id), notif);
+  }
 }

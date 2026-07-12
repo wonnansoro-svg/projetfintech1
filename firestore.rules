@@ -91,5 +91,24 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if false; // historique immuable
     }
+
+    match /lossClaims/{id} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow list: if isAdmin() || isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /notifications/{id} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow list: if isAdmin() || isSignedIn();
+      // Émises par une action admin (décision de crédit...) pour un autre utilisateur.
+      allow create: if isAdmin();
+      // Le bénéficiaire ne peut que marquer ses propres notifications comme lues.
+      allow update: if isAdmin()
+        || (isOwner(resource.data.userId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"]));
+      allow delete: if isAdmin();
+    }
   }
 }

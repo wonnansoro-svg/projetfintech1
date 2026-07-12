@@ -10,6 +10,9 @@ import type { Parcel as FirestoreParcel, Transaction as FirestoreTx } from "../t
 
 export type Parcel = FirestoreParcel;
 export type Tx = FirestoreTx;
+export type TextScale = "sm" | "md" | "lg";
+
+const TEXT_SCALE_PX: Record<TextScale, string> = { sm: "15px", md: "17px", lg: "20px" };
 
 export interface Toast {
   id: number;
@@ -25,7 +28,10 @@ interface AppState {
   userName: string;
   userVillage: string;
   balance: number;
+  textScale: TextScale;
+  setTextScale: (s: TextScale) => void;
   parcels: Parcel[];
+  parcelsLoading: boolean;
   transactions: Tx[];
   carbonCredits: number;
   co2Saved: number;
@@ -45,6 +51,7 @@ const AppContext = createContext<AppState | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const { user, profile } = useAuth();
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem("lang") as Lang) || "fr");
+  const [textScale, setTextScale] = useState<TextScale>(() => (localStorage.getItem("textScale") as TextScale) || "md");
   const [online, setOnline] = useState(navigator.onLine);
   const [balance, setBalance] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -57,10 +64,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const userVillage = profile?.village ?? "";
 
   const [parcels, setParcels] = useState<Parcel[]>([]);
+  const [parcelsLoading, setParcelsLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) { setParcels([]); return; }
-    const unsubscribe = subscribeToParcelsByOwner(user.id, setParcels);
+    if (!user) { setParcels([]); setParcelsLoading(false); return; }
+    setParcelsLoading(true);
+    const unsubscribe = subscribeToParcelsByOwner(user.id, (p) => { setParcels(p); setParcelsLoading(false); });
     return () => unsubscribe();
   }, [user?.id]);
 
@@ -82,6 +91,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [insuranceTriggered] = useState(false);
 
   useEffect(() => { localStorage.setItem("lang", lang); }, [lang]);
+
+  useEffect(() => {
+    localStorage.setItem("textScale", textScale);
+    document.documentElement.style.fontSize = TEXT_SCALE_PX[textScale];
+  }, [textScale]);
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -135,8 +149,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider
       value={{
         lang, setLang, online, userName, userVillage,
-        balance,
-        parcels, transactions, carbonCredits, co2Saved,
+        balance, textScale, setTextScale,
+        parcels, parcelsLoading, transactions, carbonCredits, co2Saved,
         insuranceTriggered, addTx,
         pushToast, toasts, weather, weatherForecast, weatherError, currentLocation, loadWeather,
       }}

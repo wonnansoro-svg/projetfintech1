@@ -1,0 +1,26 @@
+rules_version = '2';
+
+// À DÉPLOYER MANUELLEMENT (firebase deploy --only storage) après relecture.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function isAdmin() {
+      return isSignedIn()
+        && firestore.get(/databases/(default)/documents/profiles/$(request.auth.uid)).data.role == "admin";
+    }
+    function isImage() { return request.resource.contentType.matches('image/.*'); }
+    function isSmallEnough() { return request.resource.size < 8 * 1024 * 1024; }
+
+    match /kyc-ids/{uid}/{fileName} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if isOwner(uid) && isImage() && isSmallEnough();
+    }
+
+    match /losses/{uid}/{fileName} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if isOwner(uid) && isImage() && isSmallEnough();
+    }
+  }
+}

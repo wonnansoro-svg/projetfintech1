@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X, MapPin, Loader, CheckCircle2, AlertCircle, Route } from "lucide-react";
 import { addParcel } from "../services/parcelService";
 import { getCurrentLocation, trackParcelBoundary, calculatePolygonArea, type GeoPoint } from "../lib/geolocation";
+import { vibrate } from "../lib/haptics";
 import type { Crop } from "../types/firestore";
 
 const CROPS: { key: Crop; label: string; emoji: string }[] = [
@@ -18,13 +19,14 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
 }) {
   const [name, setName] = useState("");
   const [crop, setCrop] = useState<Crop>("maize");
-  const [hectares, setHectares] = useState("");
+  const [hectares, setHectares] = useState<number | null>(null);
   const [gps, setGps] = useState<GeoPoint | null>(null);
   const [gpsError, setGpsError] = useState("");
   const [locating, setLocating] = useState(false);
   const [tracing, setTracing] = useState(false);
   const [tracePoints, setTracePoints] = useState<GeoPoint[]>([]);
   const [stopTracking, setStopTracking] = useState<(() => void) | null>(null);
+  const [traceError, setTraceError] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -34,8 +36,9 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
     try {
       const point = await getCurrentLocation();
       setGps(point);
-    } catch {
-      setGpsError("Impossible d'obtenir la position GPS. Vérifiez que la localisation est autorisée.");
+      vibrate(15);
+    } catch (err) {
+      setGpsError(err instanceof Error ? err.message : "Impossible d'obtenir la position GPS.");
     } finally {
       setLocating(false);
     }
@@ -43,6 +46,8 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
 
   const startTracing = () => {
     setTracePoints([]);
+    setTraceError("");
+    setHectares(null);
     setTracing(true);
     const stop = trackParcelBoundary((points) => setTracePoints([...points]));
     setStopTracking(() => stop);
@@ -51,18 +56,20 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
   const finishTracing = () => {
     stopTracking?.();
     setTracing(false);
-    if (tracePoints.length >= 3) {
-      const areaKm2 = calculatePolygonArea(tracePoints);
-      const ha = areaKm2 * 100;
-      setHectares(ha.toFixed(2));
-      setGps(tracePoints[0]);
+    if (tracePoints.length < 3) {
+      setTraceError("Tracé insuffisant (au moins 3 points requis). Recommencez en marchant tout le tour du champ.");
+      return;
     }
+    const areaKm2 = calculatePolygonArea(tracePoints);
+    setHectares(Number((areaKm2 * 100).toFixed(2)));
+    setGps(tracePoints[0]);
+    vibrate([15, 60, 15]);
   };
 
-  const valid = name.trim().length > 0 && Number(hectares) > 0;
+  const valid = name.trim().length > 0 && hectares !== null && hectares > 0;
 
   const handleSubmit = async () => {
-    if (!valid) return;
+    if (!valid || hectares === null) return;
     setSaving(true);
     setError("");
     try {
@@ -70,11 +77,12 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
         ownerId,
         name: name.trim(),
         crop,
-        hectares: Number(hectares),
+        hectares,
         gps,
-        boundary: tracePoints.length >= 3 ? { type: "polygon", points: tracePoints } : null,
-        gpsTrace: tracePoints.length >= 3 ? tracePoints.map((point) => ({ time: new Date().toISOString(), point })) : null,
+        boundary: { type: "polygon", points: tracePoints },
+        gpsTrace: tracePoints.map((point) => ({ time: new Date().toISOString(), point })),
       });
+      vibrate(15);
       onDone();
     } catch (err) {
       console.error("Erreur ajout parcelle :", err);
@@ -122,13 +130,6 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Surface (hectares)</label>
-            <input type="number" min="0" step="0.1" value={hectares} onChange={(e) => setHectares(e.target.value)}
-              className="w-full px-3 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none text-sm"
-              placeholder="Ex : 1.2 (ou trace les limites ci-dessous)" />
-          </div>
-
           <div className="bg-sky-50 rounded-xl p-3 border border-sky-100 space-y-2">
             <div className="flex items-center gap-2 text-sky-700 font-bold text-sm"><MapPin className="w-4 h-4" /> Position GPS</div>
             {gps ? (
@@ -145,14 +146,21 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
           </div>
 
           <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100 space-y-2">
-            <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm"><Route className="w-4 h-4" /> Tracer les limites (optionnel)</div>
+            <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm"><Route className="w-4 h-4" /> Tracer les limites du champ</div>
             <div className="text-xs text-stone-500">
-              {tracing ? `Traçage en cours… ${tracePoints.length} points enregistrés` : "Marchez le long du contour du champ pendant le traçage"}
+              {tracing ? `Traçage en cours… ${tracePoints.length} points enregistrés` : "Obligatoire : marchez tout le tour du champ pour mesurer sa surface automatiquement."}
             </div>
+            {traceError && <div className="text-xs text-red-600">{traceError}</div>}
+            {hectares !== null && !tracing && (
+              <div className="bg-white rounded-lg p-2 text-center border border-emerald-200">
+                <div className="text-[10px] text-emerald-600 font-semibold uppercase">Surface mesurée (calcul automatique, non modifiable)</div>
+                <div className="text-lg font-black text-emerald-800">{hectares} ha</div>
+              </div>
+            )}
             {!tracing ? (
               <button type="button" onClick={startTracing}
                 className="w-full py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs">
-                Démarrer le traçage
+                {hectares !== null ? "Retracer les limites" : "Démarrer le traçage"}
               </button>
             ) : (
               <button type="button" onClick={finishTracing}

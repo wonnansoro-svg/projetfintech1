@@ -23,13 +23,26 @@ export interface TrackedParcel {
   updatedAt: string;
 }
 
+function describeGeoError(err: GeolocationPositionError): string {
+  switch (err.code) {
+    case err.PERMISSION_DENIED:
+      return "Localisation refusée. Autorisez l'accès à la position dans les paramètres du navigateur pour ce site.";
+    case err.POSITION_UNAVAILABLE:
+      return "Signal GPS indisponible. Sortez à l'air libre, loin des bâtiments, et réessayez.";
+    case err.TIMEOUT:
+      return "La localisation prend trop de temps. Vérifiez que le GPS du téléphone est activé et réessayez.";
+    default:
+      return "Impossible d'obtenir la position GPS.";
+  }
+}
+
 /**
  * Demande la géolocalisation du navigateur
  */
 export function getCurrentLocation(): Promise<GeoPoint> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error("Géolocalisation non supportée"));
+      reject(new Error("Géolocalisation non supportée par ce navigateur."));
       return;
     }
 
@@ -42,9 +55,9 @@ export function getCurrentLocation(): Promise<GeoPoint> {
       },
       (err) => {
         console.error("Geo error:", err);
-        reject(err instanceof Error ? err : new Error("Impossible d'obtenir la position GPS."));
+        reject(new Error(describeGeoError(err)));
       },
-      { timeout: 10000, maximumAge: 60000, enableHighAccuracy: true }
+      { timeout: 25000, maximumAge: 30000, enableHighAccuracy: true }
     );
   });
 }

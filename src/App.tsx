@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Mail, Lock, Eye, EyeOff, LogIn, Loader, AlertCircle, CheckCircle2,
   Wifi, WifiOff, Languages, ChevronLeft, Home, Cloud, Sprout, Wallet,
@@ -6,7 +6,7 @@ import {
   Clock, Phone, QrCode, MapPin, User, Leaf, Users, Truck, Warehouse,
   Recycle, FileText, Camera, BarChart2, CreditCard, Building2,
   Package, BadgeCheck, ChevronRight, Star, TrendingUp, Banknote,
-  LogOut, Settings, Bell, PieChart, Activity, DollarSign,
+  LogOut, Settings, Bell, PieChart, Activity, DollarSign, X,
 } from "lucide-react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -16,14 +16,27 @@ import AddParcelForm from "./components/AddParcelForm";
 import IdentityQRCode from "./components/IdentityQRCode";
 import { getCurrentLocation, type GeoPoint } from "./lib/geolocation";
 import { subscribeToGuaranteeFund, subscribeToCreditSettings } from "./services/fundService";
-import { recordContribution } from "./services/contributionService";
+import { recordContribution, computeWeeklyStreak } from "./services/contributionService";
 import { subscribeToWallet } from "./services/walletService";
 import {
   requestCredit, subscribeToUserCredits, subscribeToPendingCredits,
   approveCredit, rejectCredit, countActiveCredits,
 } from "./services/creditService";
 import { computeCreditCeiling } from "./lib/credit";
-import { listProfiles } from "./services/profileService";
+import { listProfiles, updateProfile } from "./services/profileService";
+import { uploadKycPhoto, uploadLossPhoto } from "./services/storageService";
+import { submitLossClaim } from "./services/lossService";
+import DocumentPreviewModal from "./components/DocumentPreviewModal";
+import type { PdfDocumentData } from "./lib/pdf";
+import { buildIdentityPayload } from "./lib/qr";
+import { vibrate } from "./lib/haptics";
+import ConfirmButton from "./components/ConfirmButton";
+import { SkeletonList } from "./components/Skeleton";
+import SpeakButton from "./components/SpeakButton";
+import OnboardingTour, { hasSeenOnboarding } from "./components/OnboardingTour";
+import { describeAuthError } from "./lib/authErrors";
+import { subscribeToNotifications, markAllRead } from "./services/notificationService";
+import type { AppNotification } from "./types/firestore";
 import { listRecentTransactions } from "./services/transactionService";
 import { getAgriculturalAdvice } from "./lib/weather";
 import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction } from "./types/firestore";
@@ -147,8 +160,8 @@ function LoginPage() {
     try {
       if (isLogin) await login(email, password);
       else         await signup(email, password);
-    } catch {
-      setError("Erreur d'authentification. Vérifiez vos identifiants.");
+    } catch (err) {
+      setError(describeAuthError(err));
     } finally {
       setLoading(false);
     }
@@ -275,6 +288,7 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
           <div className="text-2xl font-black text-stone-900 leading-tight">{userName} 👋</div>
           <div className="text-sm text-stone-600 mt-0.5">Plateforme AgriFinance Pay</div>
         </div>
+        <SpeakButton text={`${greeting}, ${userName}. Votre solde disponible est de ${balance.toLocaleString("fr-FR")} francs CFA.`} className="mt-1" />
       </div>
 
       {/* Balance Card */}
@@ -379,18 +393,40 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
 
 function IdentityPage({ onLogout }: { onLogout?: () => void }) {
   const [tab, setTab] = useState<"profil" | "kyc" | "gps">("profil");
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
+  const { pushToast, textScale, setTextScale } = useApp();
   const [gps, setGps] = useState<GeoPoint | null>(null);
   const [gpsError, setGpsError] = useState("");
   const [locating, setLocating] = useState(false);
+  const [uploadingId, setUploadingId] = useState(false);
+  const idPhotoInputRef = useRef<HTMLInputElement>(null);
+  const [idCardPreview, setIdCardPreview] = useState<PdfDocumentData | null>(null);
+  const [showTour, setShowTour] = useState(false);
+
+  const handleIdPhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !user) return;
+    setUploadingId(true);
+    try {
+      const url = await uploadKycPhoto(user.id, file);
+      await updateProfile(user.id, { kycIdPhotoUrl: url });
+      pushToast({ tone: "success", title: "Photo enregistrée", message: "Votre pièce d'identité a été transmise pour vérification." });
+    } catch (err) {
+      console.error("Erreur upload pièce d'identité :", err);
+      pushToast({ tone: "warn", title: "Échec de l'envoi", message: "Vérifiez votre connexion et réessayez." });
+    } finally {
+      setUploadingId(false);
+    }
+  };
 
   const refreshLocation = async () => {
     setLocating(true);
     setGpsError("");
     try {
       setGps(await getCurrentLocation());
-    } catch {
-      setGpsError("Impossible d'obtenir la position GPS. Vérifiez que la localisation est autorisée.");
+    } catch (err) {
+      setGpsError(err instanceof Error ? err.message : "Impossible d'obtenir la position GPS.");
     } finally {
       setLocating(false);
     }
@@ -446,6 +482,25 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
               <div><div className="text-xs text-stone-500 font-semibold">{row.label}</div><div className="font-bold text-stone-800">{row.value}</div></div>
             </div>
           ))}
+
+          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+            <div className="text-xs text-stone-500 font-semibold mb-2">Taille du texte</div>
+            <div className="grid grid-cols-3 gap-2">
+              {([["sm", "A⁻", "Petit"], ["md", "A", "Normal"], ["lg", "A⁺", "Grand"]] as const).map(([scale, symbol, name]) => (
+                <button key={scale} onClick={() => setTextScale(scale)}
+                  className={`py-2.5 rounded-xl text-sm font-black transition-all ${
+                    textScale === scale ? "bg-orange-500 text-white shadow" : "bg-stone-100 text-stone-600"
+                  }`}>
+                  {symbol}<div className="text-[10px] font-semibold mt-0.5">{name}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button onClick={() => setShowTour(true)}
+            className="w-full py-3 bg-white border border-stone-200 rounded-2xl font-bold text-sm text-stone-600 flex items-center justify-center gap-2">
+            🎓 Revoir le tutoriel
+          </button>
         </div>
       )}
 
@@ -453,19 +508,29 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
         <div className="space-y-4">
           <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
             <div className="flex items-center gap-2 mb-3"><User className="w-5 h-5 text-orange-500" /><span className="font-black text-stone-800">Pièce d'identité</span></div>
-            <div className="bg-stone-50 rounded-xl p-6 text-center border-2 border-dashed border-stone-300">
-              <Camera className="w-10 h-10 text-stone-400 mx-auto mb-2" />
-              <div className="text-sm text-stone-500 font-medium">Photo CNI / Passeport</div>
+            <input ref={idPhotoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleIdPhotoSelected} />
+            <button type="button" onClick={() => idPhotoInputRef.current?.click()} disabled={uploadingId}
+              className="w-full bg-stone-50 rounded-xl p-6 text-center border-2 border-dashed border-stone-300 disabled:opacity-60">
+              {profile.kycIdPhotoUrl ? (
+                <img src={profile.kycIdPhotoUrl} alt="Pièce d'identité" className="max-h-40 mx-auto rounded-lg mb-2 object-contain" />
+              ) : uploadingId ? (
+                <Loader className="w-10 h-10 text-stone-400 mx-auto mb-2 animate-spin" />
+              ) : (
+                <Camera className="w-10 h-10 text-stone-400 mx-auto mb-2" />
+              )}
+              <div className="text-sm text-stone-500 font-medium">
+                {uploadingId ? "Envoi en cours…" : profile.kycIdPhotoUrl ? "Photo CNI / Passeport — appuyez pour remplacer" : "Appuyez pour photographier votre CNI / Passeport"}
+              </div>
               {profile.kycStatus === "pending" ? (
                 <div className="mt-2 inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-full px-3 py-1">
-                  <AlertTriangle className="w-3.5 h-3.5" /> En attente de vérification par un agent
+                  <AlertTriangle className="w-3.5 h-3.5" /> {profile.kycIdPhotoUrl ? "En attente de vérification par un agent" : "Photo requise"}
                 </div>
               ) : (
                 <div className="mt-2 inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full px-3 py-1">
                   <CheckCircle2 className="w-3.5 h-3.5" /> Validée — {kycLabel}
                 </div>
               )}
-            </div>
+            </button>
           </div>
 
           {/* Plafonds réglementaires BCEAO liés au niveau KYC */}
@@ -493,9 +558,22 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
 
           <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
             <div className="flex items-center gap-2 mb-3"><QrCode className="w-5 h-5 text-orange-500" /><span className="font-black text-stone-800">QR Code de vérification</span></div>
-            <div className="flex justify-center">
+            <div className="flex justify-center mb-3">
               <IdentityQRCode profile={profile} />
             </div>
+            <button onClick={() => setIdCardPreview({
+              title: "Carte d'Identité Agricole",
+              subtitle: "Coopérative COOPAVEC",
+              farmer: { fullName: profile.fullName, phone: profile.phone, village: profile.village, region: profile.region, cooperativeId: profile.cooperativeId },
+              fields: [
+                { label: "Statut KYC", value: kycLabel },
+                { label: "Cultures", value: profile.crops.join(" · ") || "—" },
+              ],
+              qrPayload: buildIdentityPayload(profile),
+            })}
+              className="w-full py-3 bg-orange-50 border border-orange-200 text-orange-700 rounded-xl font-bold text-sm flex items-center justify-center gap-2">
+              <FileText className="w-4 h-4" /> Télécharger ma carte d'identité (PDF)
+            </button>
           </div>
         </div>
       )}
@@ -520,6 +598,13 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
           </button>
         </div>
       )}
+
+      {idCardPreview && (
+        <DocumentPreviewModal data={idCardPreview} filename="Carte_Identite_Agricole.pdf"
+          onClose={() => setIdCardPreview(null)}
+          onValidated={() => setIdCardPreview(null)} />
+      )}
+      {showTour && <OnboardingTour onClose={() => setShowTour(false)} />}
     </div>
   );
 }
@@ -527,7 +612,7 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
 // ==================== MODULE 2 : MES CHAMPS ====================
 
 function ParcellesPage() {
-  const { parcels } = useApp();
+  const { parcels, parcelsLoading } = useApp();
   const { user } = useAuth();
   const [showAdd, setShowAdd] = useState(false);
   const cropEmoji: Record<string, string> = { maize: "🌽", millet: "🌾", rice: "🍚", anacarde: "🥜", cacao: "🍫", manioc: "🥔" };
@@ -538,7 +623,8 @@ function ParcellesPage() {
         <div className="font-black text-stone-800 text-lg">🌾 Mes Parcelles</div>
         <button onClick={() => setShowAdd(true)} className="bg-green-600 text-white rounded-xl px-4 py-2 text-sm font-bold">+ Ajouter</button>
       </div>
-      {parcels.length === 0 && (
+      {parcelsLoading && <SkeletonList rows={2} />}
+      {!parcelsLoading && parcels.length === 0 && (
         <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
           <MapPin className="w-8 h-8 text-stone-300 mx-auto mb-2" />
           <div className="text-sm text-stone-500 font-medium">Aucune parcelle enregistrée</div>
@@ -581,14 +667,17 @@ function ParcellesPage() {
 
 // ==================== MODULE 3 : AGRISUSU (Épargne & Cotisations) ====================
 
+const WEEKLY_CONTRIBUTION = 1500;
+
 function SusuPage() {
   const { pushToast } = useApp();
   const { user } = useAuth();
-  const [amount, setAmount] = useState(5000);
+  const [weeks, setWeeks] = useState(1);
+  const amount = WEEKLY_CONTRIBUTION * weeks;
   const [tab, setTab] = useState<"epargne" | "fonds">("epargne");
-  const [saving, setSaving] = useState(false);
   const [fund, setFund] = useState<GuaranteeFund | null>(null);
   const [myContribution, setMyContribution] = useState(0);
+  const [streak, setStreak] = useState(0);
 
   useEffect(() => {
     const unsubscribe = subscribeToGuaranteeFund(setFund);
@@ -601,24 +690,31 @@ function SusuPage() {
     return () => unsubscribe();
   }, [user?.id]);
 
+  const refreshStreak = () => { if (user) computeWeeklyStreak(user.id).then(setStreak); };
+  useEffect(refreshStreak, [user?.id]);
+
   const confirmContribution = async () => {
     if (!user) return;
-    setSaving(true);
     try {
       await recordContribution(user.id, amount, "guarantee_fund");
       pushToast({ tone: "success", title: "Cotisation enregistrée !", message: `${amount.toLocaleString("fr-FR")} F` });
+      refreshStreak();
     } catch (err) {
       console.error("Erreur cotisation :", err);
       pushToast({ tone: "warn", title: "Échec de la cotisation", message: "Réessayez, vérifiez votre connexion." });
-    } finally {
-      setSaving(false);
+      throw err;
     }
   };
 
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 text-white rounded-3xl p-5 shadow-xl mb-4">
-        <div className="text-xs opacity-90 font-semibold uppercase tracking-wide">AgriSusu — Fonds de garantie</div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs opacity-90 font-semibold uppercase tracking-wide">AgriSusu — Fonds de garantie</div>
+          {streak > 0 && (
+            <div className="bg-white/25 rounded-full px-2.5 py-1 text-xs font-black flex items-center gap-1">🔥 {streak} semaine{streak > 1 ? "s" : ""}</div>
+          )}
+        </div>
         <div className="text-2xl font-black mb-1">Épargne collective 🤝</div>
         <div className="text-sm opacity-95">L'argent cotisé par tous les bénéficiaires devient l'assurance qui débloque les crédits agricoles</div>
         <div className="mt-3 grid grid-cols-2 gap-2">
@@ -640,20 +736,24 @@ function SusuPage() {
 
       {tab === "epargne" && (
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-200">
-          <div className="grid grid-cols-4 gap-2 mb-3">
-            {[2000, 5000, 10000, 20000].map((v) => (
-              <button key={v} onClick={() => setAmount(v)} className={`py-2.5 rounded-xl text-sm font-extrabold transition-all ${
-                amount === v ? "bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md scale-105" : "bg-stone-100 text-stone-700"
-              }`}>{v / 1000}k</button>
-            ))}
+          <p className="text-xs text-stone-500 mb-3">
+            Cotisation fixe de <span className="font-black text-stone-700">1 500 FCFA / semaine</span>. Cotiser régulièrement rend éligible aux crédits agricoles et à l'assurance agricole.
+          </p>
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <button onClick={() => setWeeks((w) => Math.max(1, w - 1))}
+              className="w-10 h-10 rounded-xl bg-stone-100 text-stone-700 font-black text-lg">−</button>
+            <div className="text-center">
+              <div className="text-2xl font-black text-stone-800">{weeks}</div>
+              <div className="text-[10px] text-stone-500 font-semibold uppercase">semaine{weeks > 1 ? "s" : ""}</div>
+            </div>
+            <button onClick={() => setWeeks((w) => w + 1)}
+              className="w-10 h-10 rounded-xl bg-stone-100 text-stone-700 font-black text-lg">+</button>
           </div>
           <div className="bg-amber-50 rounded-xl p-4 text-center mb-3 border border-amber-100">
             <Money value={amount} size="md" />
           </div>
-          <button onClick={confirmContribution} disabled={saving}
-            className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600 disabled:opacity-60">
-            {saving ? "Enregistrement…" : "Confirmer ✓"}
-          </button>
+          <ConfirmButton onConfirm={confirmContribution} label="Confirmer ✓"
+            className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600" />
         </div>
       )}
 
@@ -673,8 +773,9 @@ function SusuPage() {
               <div className="font-black text-emerald-800 text-lg">{(fund?.availableForCredit ?? 0).toLocaleString("fr-FR")} F</div>
             </div>
           </div>
-          <p className="text-xs text-stone-500">
-            Chaque cotisation renforce le fonds commun. Ce fonds sert de garantie auprès de la banque : plus il est important, plus les bénéficiaires peuvent accéder à des crédits agricoles importants.
+          <p className="text-xs text-stone-500 flex items-start gap-2">
+            <span>Chaque cotisation renforce le fonds commun. Ce fonds sert de garantie auprès de la banque : plus il est important, plus les bénéficiaires peuvent accéder à des crédits agricoles importants.</span>
+            <SpeakButton text="Chaque cotisation renforce le fonds commun. Ce fonds sert de garantie auprès de la banque. Plus il est important, plus les bénéficiaires peuvent accéder à des crédits agricoles importants." />
           </p>
         </div>
       )}
@@ -688,7 +789,6 @@ function CreditPage() {
   const { pushToast } = useApp();
   const { user, profile } = useAuth();
   const [request, setRequest] = useState(25000);
-  const [submitting, setSubmitting] = useState(false);
   const [tab, setTab] = useState<"credit" | "invest" | "remboursement">("credit");
   const [fund, setFund] = useState<GuaranteeFund | null>(null);
   const [settings, setSettings] = useState<CreditSettings | null>(null);
@@ -708,22 +808,34 @@ function CreditPage() {
     return () => u();
   }, [user?.id]);
 
-  const ceiling = fund && settings && profile
-    ? computeCreditCeiling({ personalContribution12m: contribution12m, fund, settings, kycStatus: profile.kycStatus }).ceiling
-    : 0;
+  const ceilingResult = fund && settings && profile
+    ? computeCreditCeiling({ personalContribution12m: contribution12m, fund, settings, kycStatus: profile.kycStatus })
+    : null;
+  const ceiling = ceilingResult?.ceiling ?? 0;
+
+  const progressHint = (() => {
+    if (!ceilingResult || !settings) return null;
+    const { personalCap, fundShareCap, regulatoryCap } = ceilingResult;
+    const limiter = Math.min(personalCap, fundShareCap, regulatoryCap);
+    if (limiter === personalCap && personalCap < fundShareCap && personalCap < regulatoryCap) {
+      return "Votre plafond est limité par vos cotisations — cotisez régulièrement sur AgriSusu pour l'augmenter.";
+    }
+    if (limiter === fundShareCap) {
+      return "Votre plafond est limité par le fonds de garantie collectif — plus de cotisations de la coopérative l'augmenteront pour tous.";
+    }
+    return null;
+  })();
 
   const latestCredit = credits[0] ?? null;
 
   const submitRequest = async () => {
     if (!user) return;
-    setSubmitting(true);
     try {
       await requestCredit(user.id, request);
       pushToast({ tone: "success", title: "Demande envoyée", message: "En attente de validation par la coopérative." });
     } catch (err: any) {
       pushToast({ tone: "warn", title: "Demande refusée", message: err?.message ?? "Réessayez plus tard." });
-    } finally {
-      setSubmitting(false);
+      throw err;
     }
   };
 
@@ -737,6 +849,7 @@ function CreditPage() {
           <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Taux</div><div className="font-black">{settings ? `${(settings.monthlyRate * 100).toFixed(0)}% / mois` : "—"}</div></div>
           <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Durée</div><div className="font-black">{settings ? `${settings.termMonths} mois` : "—"}</div></div>
         </div>
+        {progressHint && <div className="mt-3 text-xs bg-white/15 rounded-xl px-3 py-2">💡 {progressHint}</div>}
       </div>
 
       <div className="flex gap-2 mb-4">
@@ -763,13 +876,12 @@ function CreditPage() {
           <div className="bg-violet-50 rounded-xl p-3 mb-3 text-center border border-violet-100">
             <Money value={request} size="md" />
           </div>
-          <p className="text-xs text-stone-500 mb-3">
-            Le montant réellement accordé dépendra de vos cotisations et de l'état du fonds de garantie au moment de la validation par la coopérative — la demande n'est pas accordée instantanément.
+          <p className="text-xs text-stone-500 mb-3 flex items-start gap-2">
+            <span>Le montant réellement accordé dépendra de vos cotisations et de l'état du fonds de garantie au moment de la validation par la coopérative — la demande n'est pas accordée instantanément.</span>
+            <SpeakButton text="Le montant réellement accordé dépendra de vos cotisations et de l'état du fonds de garantie au moment de la validation par la coopérative. La demande n'est pas accordée instantanément." />
           </p>
-          <button onClick={submitRequest} disabled={submitting}
-            className="w-full py-4 rounded-2xl font-black text-white transition-all bg-gradient-to-br from-violet-600 to-purple-600 disabled:opacity-60">
-            {submitting ? "Envoi…" : "Soumettre la demande"}
-          </button>
+          <ConfirmButton onConfirm={submitRequest} label="Soumettre la demande" successLabel="✓ Demande envoyée !"
+            className="w-full py-4 rounded-2xl font-black text-white bg-gradient-to-br from-violet-600 to-purple-600" />
         </div>
       )}
 
@@ -918,19 +1030,54 @@ function InsurancePage() {
 
 function AgriProtectPage() {
   const { pushToast } = useApp();
+  const { user } = useAuth();
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [gps, setGps] = useState<GeoPoint | null>(null);
   const [gpsError, setGpsError] = useState("");
+  const [comment, setComment] = useState("");
+  const [photos, setPhotos] = useState<(File | null)[]>([null, null, null]);
+  const [previews, setPreviews] = useState<(string | null)[]>([null, null, null]);
+  const photoInputRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
 
   useEffect(() => {
-    getCurrentLocation().then(setGps).catch(() => setGpsError("Position GPS indisponible"));
+    getCurrentLocation().then(setGps).catch((err) => setGpsError(err instanceof Error ? err.message : "Position GPS indisponible"));
   }, []);
+
+  const handlePhotoSelected = (i: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setPhotos((prev) => { const next = [...prev]; next[i] = file; return next; });
+    setPreviews((prev) => { const next = [...prev]; next[i] = URL.createObjectURL(file); return next; });
+  };
+
+  const hasPhoto = photos.some(Boolean);
+
+  const handleSubmit = async () => {
+    if (!user || !hasPhoto) return;
+    setSubmitting(true);
+    try {
+      const photoUrls = await Promise.all(
+        photos.filter((f): f is File => f !== null).map((f, i) => uploadLossPhoto(user.id, f, i))
+      );
+      await submitLossClaim({ userId: user.id, comment: comment.trim(), gps, photoUrls });
+      setSubmitted(true);
+      pushToast({ tone: "success", title: "Déclaration envoyée 📸", message: "Un expert vous contactera sous 48h" });
+      setTimeout(() => { setSubmitted(false); setComment(""); setPhotos([null, null, null]); setPreviews([null, null, null]); }, 2500);
+    } catch (err) {
+      console.error("Erreur soumission sinistre :", err);
+      pushToast({ tone: "warn", title: "Échec de l'envoi", message: "Vérifiez votre connexion et réessayez." });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-fuchsia-600 via-pink-600 to-rose-500 text-white rounded-3xl p-5 shadow-xl mb-4">
         <div className="flex items-center gap-2 mb-2"><Camera className="w-6 h-6" /><div className="font-black text-lg">Agri-Protect Photo</div></div>
-        <p className="text-sm opacity-90">Déclarez un sinistre avec photos, vidéos et géolocalisation automatique.</p>
+        <p className="text-sm opacity-90">Déclarez un sinistre avec photos et géolocalisation automatique.</p>
       </div>
 
       <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-4">
@@ -939,9 +1086,19 @@ function AgriProtectPage() {
         {/* Zone photos */}
         <div className="grid grid-cols-3 gap-2 mb-4">
           {[0, 1, 2].map(i => (
-            <div key={i} className="aspect-square bg-stone-50 border-2 border-dashed border-stone-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-fuchsia-50 hover:border-fuchsia-300 transition-colors">
-              <Camera className="w-6 h-6 text-stone-400" />
-              <span className="text-xs text-stone-400 mt-1">{i === 0 ? "Photo 1" : i === 1 ? "Photo 2" : "Vidéo"}</span>
+            <div key={i}>
+              <input ref={photoInputRefs[i]} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelected(i)} />
+              <button type="button" onClick={() => photoInputRefs[i].current?.click()}
+                className="w-full aspect-square bg-stone-50 border-2 border-dashed border-stone-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-fuchsia-50 hover:border-fuchsia-300 transition-colors overflow-hidden">
+                {previews[i] ? (
+                  <img src={previews[i]!} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                ) : (
+                  <>
+                    <Camera className="w-6 h-6 text-stone-400" />
+                    <span className="text-xs text-stone-400 mt-1">Photo {i + 1}</span>
+                  </>
+                )}
+              </button>
             </div>
           ))}
         </div>
@@ -949,7 +1106,7 @@ function AgriProtectPage() {
         {/* Commentaire */}
         <div className="mb-3">
           <label className="block text-xs font-black text-stone-600 mb-1">Commentaire</label>
-          <textarea rows={3} placeholder="Décrivez le sinistre..." className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 resize-none" />
+          <textarea rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Décrivez le sinistre..." className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 resize-none" />
         </div>
 
         {/* Géolocalisation */}
@@ -963,11 +1120,15 @@ function AgriProtectPage() {
           </div>
         </div>
 
-        <button onClick={() => {
-          setSubmitted(true);
-          pushToast({ tone: "success", title: "Déclaration envoyée 📸", message: "Un expert vous contactera sous 48h" });
-        }} className={`w-full py-4 rounded-2xl font-black text-white shadow-lg ${submitted ? "bg-emerald-500" : "bg-gradient-to-br from-fuchsia-600 to-rose-500"}`}>
-          {submitted ? "✓ Déclaration envoyée !" : "Soumettre la déclaration"}
+        {!hasPhoto && (
+          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3">
+            Ajoutez au moins une photo du sinistre avant de soumettre.
+          </div>
+        )}
+
+        <button onClick={handleSubmit} disabled={submitted || submitting || !hasPhoto}
+          className={`w-full py-4 rounded-2xl font-black text-white shadow-lg disabled:opacity-60 ${submitted ? "bg-emerald-500" : "bg-gradient-to-br from-fuchsia-600 to-rose-500"}`}>
+          {submitted ? "✓ Déclaration envoyée !" : submitting ? "Envoi en cours…" : "Soumettre la déclaration"}
         </button>
       </div>
 
@@ -996,9 +1157,26 @@ function AgriProtectPage() {
 // ==================== MODULE 8 : ÉVALUATION DES PERTES ====================
 
 function LossesPage() {
-  const { pushToast } = useApp();
+  const { profile } = useAuth();
   const [qty, setQty] = useState(500);
   const pricePerKg = 600; // FCFA/kg anacarde
+  const [preview, setPreview] = useState<PdfDocumentData | null>(null);
+
+  const openPreview = () => {
+    if (!profile) return;
+    setPreview({
+      title: "Rapport d'Évaluation des Pertes",
+      subtitle: "Coopérative COOPAVEC — Moteur d'évaluation automatique",
+      farmer: { fullName: profile.fullName, phone: profile.phone, village: profile.village, region: profile.region, cooperativeId: profile.cooperativeId },
+      fields: [
+        { label: "Quantité perdue", value: `${qty} kg` },
+        { label: "Prix marché", value: `${pricePerKg.toLocaleString("fr-FR")} FCFA/kg` },
+        { label: "Valeur estimée", value: `${(qty * pricePerKg).toLocaleString("fr-FR")} F` },
+        { label: "Date", value: new Date().toLocaleDateString("fr-FR") },
+      ],
+      qrPayload: buildIdentityPayload(profile),
+    });
+  };
 
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
@@ -1025,11 +1203,17 @@ function LossesPage() {
           <div className="text-xs text-stone-400 mt-1">Prix marché : {pricePerKg.toLocaleString("fr-FR")} FCFA/kg</div>
         </div>
 
-        <button onClick={() => pushToast({ tone: "success", title: "Rapport généré !", message: "PDF disponible dans Certificat Numérique" })}
+        <button onClick={openPreview}
           className="w-full py-4 rounded-2xl font-black text-white bg-gradient-to-br from-slate-700 to-slate-800 shadow-lg flex items-center justify-center gap-2">
           <FileText className="w-5 h-5" /> Générer le rapport automatique
         </button>
       </div>
+
+      {preview && (
+        <DocumentPreviewModal data={preview} filename="Rapport_Evaluation_Pertes.pdf"
+          onClose={() => setPreview(null)}
+          onValidated={() => setPreview(null)} />
+      )}
     </div>
   );
 }
@@ -1037,48 +1221,101 @@ function LossesPage() {
 // ==================== MODULE 9 : CERTIFICAT NUMÉRIQUE ====================
 
 function CertificatePage() {
-  const { pushToast } = useApp();
+  const { profile } = useAuth();
+  const [type, setType] = useState<"perte" | "production">("perte");
+  const [sinistre, setSinistre] = useState("");
+  const [parcelle, setParcelle] = useState("");
+  const [saison, setSaison] = useState(String(new Date().getFullYear()));
+  const [quantite, setQuantite] = useState("");
+  const [preview, setPreview] = useState<PdfDocumentData | null>(null);
+
+  const canGenerate = type === "perte" ? sinistre.trim().length > 0 : quantite.trim().length > 0;
+
+  const openPreview = () => {
+    if (!profile || !canGenerate) return;
+    const farmer = { fullName: profile.fullName, phone: profile.phone, village: profile.village, region: profile.region, cooperativeId: profile.cooperativeId };
+    if (type === "perte") {
+      setPreview({
+        title: "Certificat de Perte",
+        subtitle: "Coopérative COOPAVEC — Agri-Protect",
+        farmer,
+        fields: [
+          { label: "Sinistre", value: sinistre },
+          { label: "Parcelle", value: parcelle || "—" },
+          { label: "Date", value: new Date().toLocaleDateString("fr-FR") },
+        ],
+        qrPayload: buildIdentityPayload(profile),
+      });
+    } else {
+      setPreview({
+        title: "Attestation de Production",
+        subtitle: "Coopérative COOPAVEC",
+        farmer,
+        fields: [
+          { label: "Saison", value: saison },
+          { label: "Quantité produite", value: `${quantite} t` },
+        ],
+        qrPayload: buildIdentityPayload(profile),
+      });
+    }
+  };
+
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-teal-600 via-cyan-600 to-sky-700 text-white rounded-3xl p-5 shadow-xl mb-4">
         <div className="flex items-center gap-2 mb-2"><BadgeCheck className="w-6 h-6" /><div className="font-black text-lg">Certificat Numérique</div></div>
-        <p className="text-sm opacity-90">Générez vos certificats de perte avec signature numérique et QR Code de vérification.</p>
+        <p className="text-sm opacity-90">Générez un certificat avec vos informations réelles et un QR code de vérification, après prévisualisation.</p>
       </div>
 
-      {/* Certificats disponibles */}
-      <div className="space-y-3 mb-4">
-        {[
-          { type: "Certificat de Perte", date: "12/05/2026", sinistre: "Sécheresse · Champ Anacarde", statut: "Signé" },
-          { type: "Attestation Production", date: "01/01/2026", sinistre: "Saison 2025 · 3.2t", statut: "Signé" },
-        ].map((cert, i) => (
-          <div key={i} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <div className="font-black text-stone-800">{cert.type}</div>
-                <div className="text-xs text-stone-500 mt-0.5">{cert.sinistre}</div>
-                <div className="text-xs text-stone-400">{cert.date}</div>
-              </div>
-              <div className="bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full px-2 py-1 flex items-center gap-1">
-                <BadgeCheck className="w-3.5 h-3.5" /> {cert.statut}
-              </div>
+      <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-4">
+        <div className="flex gap-2 mb-4">
+          {([{ k: "perte", l: "Certificat de Perte" }, { k: "production", l: "Attestation Production" }] as const).map((t) => (
+            <button key={t.k} onClick={() => setType(t.k)}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${type === t.k ? "bg-teal-600 text-white shadow" : "bg-stone-100 text-stone-600"}`}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+
+        {type === "perte" ? (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-black text-stone-600 mb-1">Sinistre</label>
+              <input value={sinistre} onChange={(e) => setSinistre(e.target.value)} placeholder="Ex : Sécheresse — Champ Anacarde"
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-teal-400" />
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => pushToast({ tone: "info", title: "Téléchargement PDF", message: cert.type })}
-                className="py-2 bg-teal-50 border border-teal-200 text-teal-700 rounded-xl font-bold text-sm flex items-center justify-center gap-1">
-                <FileText className="w-4 h-4" /> PDF
-              </button>
-              <button className="py-2 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl font-bold text-sm flex items-center justify-center gap-1">
-                <QrCode className="w-4 h-4" /> QR Code
-              </button>
+            <div>
+              <label className="block text-xs font-black text-stone-600 mb-1">Parcelle concernée (optionnel)</label>
+              <input value={parcelle} onChange={(e) => setParcelle(e.target.value)} placeholder="Ex : Parcelle Nord"
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-teal-400" />
             </div>
           </div>
-        ))}
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-black text-stone-600 mb-1">Saison</label>
+              <input value={saison} onChange={(e) => setSaison(e.target.value)}
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-teal-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-black text-stone-600 mb-1">Quantité produite (tonnes)</label>
+              <input type="number" min="0" step="0.1" value={quantite} onChange={(e) => setQuantite(e.target.value)} placeholder="Ex : 3.2"
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-teal-400" />
+            </div>
+          </div>
+        )}
+
+        <button onClick={openPreview} disabled={!canGenerate}
+          className="mt-4 w-full py-4 rounded-2xl font-black text-white bg-gradient-to-br from-teal-600 to-cyan-600 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50">
+          <FileText className="w-5 h-5" /> Prévisualiser le certificat
+        </button>
       </div>
 
-      <button onClick={() => pushToast({ tone: "success", title: "Certificat généré 📜", message: "Disponible en PDF et QR Code" })}
-        className="w-full py-4 rounded-2xl font-black text-white bg-gradient-to-br from-teal-600 to-cyan-600 shadow-lg flex items-center justify-center gap-2">
-        <FileText className="w-5 h-5" /> Générer un nouveau certificat
-      </button>
+      {preview && (
+        <DocumentPreviewModal data={preview} filename={`${preview.title.replace(/\s+/g, "_")}.pdf`}
+          onClose={() => setPreview(null)}
+          onValidated={() => setPreview(null)} />
+      )}
     </div>
   );
 }
@@ -1408,7 +1645,7 @@ function RecyclagePage() {
   const [gpsError, setGpsError] = useState("");
 
   useEffect(() => {
-    getCurrentLocation().then(setGps).catch(() => setGpsError("Position GPS indisponible"));
+    getCurrentLocation().then(setGps).catch((err) => setGpsError(err instanceof Error ? err.message : "Position GPS indisponible"));
   }, []);
 
   return (
@@ -1789,7 +2026,23 @@ function CrowdfundPage() {
 
 function TopBar({ title, onBack, userName, onLogout }: any) {
   const { lang, setLang, online } = useApp();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifs, setNotifs] = useState<AppNotification[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    const u = subscribeToNotifications(user.id, setNotifs);
+    return () => u();
+  }, [user?.id]);
+
+  const unreadCount = notifs.filter((n) => !n.read).length;
+
+  const openNotifs = () => {
+    setNotifOpen(true);
+    if (user && unreadCount > 0) markAllRead(user.id);
+  };
 
   return (
     <>
@@ -1814,6 +2067,14 @@ function TopBar({ title, onBack, userName, onLogout }: any) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {user && (
+              <button onClick={openNotifs} className="relative p-2 bg-stone-100 hover:bg-stone-200 rounded-full text-stone-700" aria-label="Notifications">
+                <Bell className="w-4 h-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center">{unreadCount}</span>
+                )}
+              </button>
+            )}
             <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 bg-stone-100 hover:bg-stone-200 rounded-full px-2.5 py-1.5 text-xs font-bold text-stone-700">
               <Languages className="w-4 h-4" />
               {LANGS.find((l) => l.code === lang)?.flag}
@@ -1828,6 +2089,27 @@ function TopBar({ title, onBack, userName, onLogout }: any) {
           </div>
         </div>
       </header>
+
+      {notifOpen && (
+        <div className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setNotifOpen(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-sm max-h-[80vh] overflow-y-auto p-3 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="px-3 py-2 flex items-center justify-between">
+              <span className="text-stone-500 text-xs uppercase tracking-wider font-bold">Notifications</span>
+              <button onClick={() => setNotifOpen(false)} className="p-1 text-stone-400"><X className="w-4 h-4" /></button>
+            </div>
+            {notifs.length === 0 && (
+              <div className="py-8 text-center text-sm text-stone-400">Aucune notification pour le moment</div>
+            )}
+            {notifs.map((n) => (
+              <div key={n.id} className={`px-3 py-3 rounded-2xl mb-1 ${n.read ? "" : "bg-emerald-50"}`}>
+                <div className="font-bold text-stone-800 text-sm">{n.title}</div>
+                <div className="text-xs text-stone-600 mt-0.5">{n.message}</div>
+                <div className="text-[10px] text-stone-400 mt-1">{new Date(n.createdAt).toLocaleString("fr-FR")}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setOpen(false)}>
@@ -1927,12 +2209,14 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
   const [pendingCredits, setPendingCredits] = useState<Credit[]>([]);
   const [recentTxs, setRecentTxs] = useState<Transaction[]>([]);
   const [decidingId, setDecidingId] = useState<string | null>(null);
+  const [profilesLoading, setProfilesLoading] = useState(true);
+  const [txsLoading, setTxsLoading] = useState(true);
 
-  useEffect(() => { listProfiles().then(setProfiles); }, []);
+  useEffect(() => { listProfiles().then((p) => { setProfiles(p); setProfilesLoading(false); }); }, []);
   useEffect(() => { const u = subscribeToGuaranteeFund(setFund); return () => u(); }, []);
   useEffect(() => { const u = subscribeToPendingCredits(setPendingCredits); return () => u(); }, []);
   useEffect(() => { countActiveCredits().then(setActiveCreditsCount); }, [pendingCredits]);
-  useEffect(() => { listRecentTransactions(8).then(setRecentTxs); }, []);
+  useEffect(() => { listRecentTransactions(8).then((t) => { setRecentTxs(t); setTxsLoading(false); }); }, []);
 
   const nameByUid = new Map(profiles.map((p) => [p.uid, p.fullName]));
 
@@ -2068,7 +2352,8 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
         {tab === "clients" && (
           <div className="space-y-4">
             <h2 className="text-lg font-black text-stone-900">Membres</h2>
-            {profiles.length === 0 && (
+            {profilesLoading && <SkeletonList rows={4} />}
+            {!profilesLoading && profiles.length === 0 && (
               <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
                 <Users className="w-8 h-8 text-stone-300 mx-auto mb-2" />
                 <div className="text-sm text-stone-500 font-medium">Aucun bénéficiaire enregistré</div>
@@ -2130,7 +2415,8 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
         {tab === "txns" && (
           <div className="space-y-4">
             <h2 className="text-lg font-black text-stone-900">Transactions</h2>
-            {recentTxs.length === 0 && (
+            {txsLoading && <SkeletonList rows={5} />}
+            {!txsLoading && recentTxs.length === 0 && (
               <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
                 <Activity className="w-8 h-8 text-stone-300 mx-auto mb-2" />
                 <div className="text-sm text-stone-500 font-medium">Aucune transaction enregistrée</div>
@@ -2471,13 +2757,14 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
 // ==================== MAIN SHELL ====================
 
 function Shell() {
-  const { user, profile, profileLoading } = useAuth();
+  const { user, profile, profileLoading, logout } = useAuth();
   const [page, setPage] = useState<AllPages>("home");
   const [pageKey, setPageKey] = useState(0);
+  const [showOnboarding, setShowOnboarding] = useState(() => !hasSeenOnboarding());
 
   if (!user) return <LoginPage />;
 
-  const handleLogout = () => window.location.reload();
+  const handleLogout = () => { logout(); };
 
   if (profileLoading) {
     return (
@@ -2539,6 +2826,7 @@ function Shell() {
       <main key={pageKey} className="pb-20 animate-fade-in">{render()}</main>
       <BottomNav current={bottomKey} onChange={navigate} />
       <Toast />
+      {showOnboarding && <OnboardingTour onClose={() => setShowOnboarding(false)} />}
     </div>
   );
 }

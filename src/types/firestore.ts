@@ -17,6 +17,7 @@ export interface Profile {
   cooperativeId: string;
   crops: Crop[];
   kycStatus: KycStatus;
+  kycIdPhotoUrl: string | null;
   verificationCode: string;
   active: boolean;
   createdAt: number;
@@ -143,6 +144,16 @@ export type TxType =
   | "deposit" | "withdraw" | "send" | "receive" | "payout"
   | "credit_disbursement" | "credit_repayment";
 
+export interface LossClaim {
+  id: string;
+  userId: string;
+  comment: string;
+  gps: GeoPointLike | null;
+  photoUrls: string[];
+  status: "submitted";
+  createdAt: number;
+}
+
 export interface Transaction {
   id: string;
   userId: string;
@@ -151,5 +162,14 @@ export interface Transaction {
   label: string;
   relatedCreditId?: string;
   relatedContributionId?: string;
+  createdAt: number;
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  read: boolean;
   createdAt: number;
 }

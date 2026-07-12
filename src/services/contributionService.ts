@@ -1,4 +1,4 @@
-import { collection, doc, runTransaction } from "firebase/firestore";
+import { collection, doc, getDocs, query, runTransaction, where } from "firebase/firestore";
 import { db } from "../firebase";
 import { DEFAULT_GUARANTEE_FUND, FUND_DOC } from "./fundService";
 import type { Contribution, ContributionKind, GuaranteeFund, Wallet } from "../types/firestore";
@@ -50,4 +50,24 @@ export async function recordContribution(userId: string, amount: number, kind: C
       relatedContributionId: contributionRef.id, createdAt: now,
     });
   });
+}
+
+/** Index de semaine (lundi UTC) — incrémente de 1 chaque semaine, sert de clé pour la régularité. */
+function weekKey(ts: number): number {
+  const d = new Date(ts);
+  const dayOffset = (d.getUTCDay() + 6) % 7; // 0 = lundi
+  const monday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dayOffset);
+  return Math.floor(monday / (7 * 24 * 3600 * 1000));
+}
+
+/** Nombre de semaines ISO consécutives (jusqu'à la semaine courante incluse) avec au moins une cotisation confirmée. */
+export async function computeWeeklyStreak(userId: string): Promise<number> {
+  const q = query(collection(db, CONTRIBUTIONS), where("userId", "==", userId));
+  const snap = await getDocs(q);
+  const weeks = new Set(snap.docs.map((d) => weekKey((d.data() as Contribution).createdAt)));
+
+  let streak = 0;
+  let w = weekKey(Date.now());
+  while (weeks.has(w)) { streak++; w--; }
+  return streak;
 }

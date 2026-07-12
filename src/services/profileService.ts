@@ -44,6 +44,7 @@ export async function createProfile(uid: string, input: NewProfileInput): Promis
     cooperativeId: input.cooperativeId,
     crops: input.crops,
     kycStatus: "pending",
+    kycIdPhotoUrl: null,
     verificationCode: generateVerificationCode(),
     active: true,
     createdAt: now,
