@@ -12,7 +12,7 @@ const TRANSACTIONS = "transactions";
  * Firestore, le portefeuille du bénéficiaire ET le fonds de garantie
  * collectif (l'argent déposé qui sert d'assurance pour les crédits agricoles).
  */
-export async function recordContribution(userId: string, amount: number, kind: ContributionKind = "susu"): Promise<void> {
+export async function recordContribution(userId: string, amount: number, kind: ContributionKind = "susu", label?: string): Promise<void> {
   if (amount <= 0) throw new Error("Le montant de la cotisation doit être positif.");
 
   const walletRef = doc(db, WALLETS, userId);
@@ -46,7 +46,7 @@ export async function recordContribution(userId: string, amount: number, kind: C
     tx.set(FUND_DOC, { ...fund, totalDeposited: newFundTotal, availableForCredit: Math.max(0, newAvailable), updatedAt: now });
     tx.set(txRef, {
       id: txRef.id, userId, type: "deposit", amount,
-      label: kind === "guarantee_fund" ? "Cotisation — Fonds de garantie" : "Cotisation AgriSusu",
+      label: label ?? (kind === "guarantee_fund" ? "Cotisation — Fonds de garantie" : "Cotisation AgriSusu"),
       relatedContributionId: contributionRef.id, createdAt: now,
     });
   });

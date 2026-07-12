@@ -30,3 +30,10 @@ export const db = initializeFirestore(app, {
 
 // Stockage des photos (pièce d'identité, sinistres...)
 export const storage = getStorage(app);
+
+// Instance Firebase secondaire, isolée, utilisée UNIQUEMENT pour créer des
+// comptes de connexion depuis l'espace admin (createUserWithEmailAndPassword
+// connecte automatiquement l'appelant comme le nouvel utilisateur — sur une
+// app séparée, ça n'affecte donc jamais la session de l'admin sur `auth`).
+const adminCreateApp = initializeApp(firebaseConfig, "admin-create");
+export const adminCreateAuth = getAuth(adminCreateApp);

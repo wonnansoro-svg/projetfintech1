@@ -1,8 +1,9 @@
 import {
   doc, getDoc, setDoc, updateDoc, onSnapshot, collection, getDocs,
 } from "firebase/firestore";
-import { db } from "../firebase";
-import { generateVerificationCode } from "../lib/qr";
+import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
+import { db, adminCreateAuth } from "../firebase";
+import { generateVerificationCode, generateTempPassword } from "../lib/qr";
 import type { Crop, Profile, Role } from "../types/firestore";
 
 const PROFILES = "profiles";
@@ -30,8 +31,7 @@ export function subscribeToProfile(uid: string, onChange: (profile: Profile | nu
   });
 }
 
-/** Crée le profil bénéficiaire (onboarding réel ou migration d'un compte Auth existant sans profil). */
-export async function createProfile(uid: string, input: NewProfileInput): Promise<Profile> {
+async function writeProfileDocs(uid: string, input: NewProfileInput): Promise<Profile> {
   const now = Date.now();
   const profile: Profile = {
     uid,
@@ -55,6 +55,37 @@ export async function createProfile(uid: string, input: NewProfileInput): Promis
     uid, balance: 0, totalContributed: 0, contributionsLast12m: 0, updatedAt: now,
   });
   return profile;
+}
+
+/** Crée le profil bénéficiaire (onboarding réel ou migration d'un compte Auth existant sans profil). */
+export async function createProfile(uid: string, input: NewProfileInput): Promise<Profile> {
+  return writeProfileDocs(uid, input);
+}
+
+export interface AdminCreatedAccount {
+  uid: string;
+  email: string;
+  tempPassword: string;
+  profile: Profile;
+}
+
+/**
+ * Crée un compte de connexion + profil pour un bénéficiaire qui ne peut pas
+ * s'inscrire lui-même sur le terrain. Utilise une instance Firebase séparée
+ * (`adminCreateAuth`) pour que la création du compte ne déconnecte pas l'admin.
+ */
+export async function createProfileAsAdmin(input: Omit<NewProfileInput, "email">): Promise<AdminCreatedAccount> {
+  const digits = input.phone.replace(/\D/g, "");
+  if (!digits) throw new Error("Numéro de téléphone invalide.");
+  const email = `${digits}@coopavec.local`;
+  const tempPassword = generateTempPassword();
+
+  const cred = await createUserWithEmailAndPassword(adminCreateAuth, email, tempPassword);
+  const uid = cred.user.uid;
+  await signOut(adminCreateAuth);
+
+  const profile = await writeProfileDocs(uid, { ...input, email });
+  return { uid, email, tempPassword, profile };
 }
 
 export async function updateProfile(uid: string, patch: Partial<Profile>): Promise<void> {

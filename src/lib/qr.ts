@@ -1,15 +1,23 @@
 import type { Profile } from "../types/firestore";
 
+function randomCode(length: number, alphabet: string): string {
+  const bytes = new Uint32Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+}
+
 /**
  * Génère un code de vérification aléatoire (8 caractères alphanumériques),
  * utilisé comme "secret partagé" simple pour le QR d'identité (pas une
  * signature cryptographique — cf. limite documentée dans le plan).
  */
 export function generateVerificationCode(): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans caractères ambigus (0/O, 1/I)
-  const bytes = new Uint32Array(8);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+  return randomCode(8, "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"); // sans caractères ambigus (0/O, 1/I)
+}
+
+/** Mot de passe temporaire pour un compte créé par un admin — à communiquer une seule fois au bénéficiaire. */
+export function generateTempPassword(): string {
+  return randomCode(10, "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789");
 }
 
 /**

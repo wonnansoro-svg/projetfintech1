@@ -6,7 +6,7 @@ import {
   Clock, Phone, QrCode, MapPin, User, Leaf, Users, Truck, Warehouse,
   Recycle, FileText, Camera, BarChart2, CreditCard, Building2,
   Package, BadgeCheck, ChevronRight, Star, TrendingUp, Banknote,
-  LogOut, Settings, Bell, PieChart, Activity, DollarSign, X,
+  LogOut, Settings, Bell, PieChart, Activity, DollarSign, X, UserPlus,
 } from "lucide-react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -37,6 +37,8 @@ import OnboardingTour, { hasSeenOnboarding } from "./components/OnboardingTour";
 import { describeAuthError } from "./lib/authErrors";
 import { subscribeToNotifications, markAllRead } from "./services/notificationService";
 import type { AppNotification } from "./types/firestore";
+import AddBeneficiaryForm from "./components/AddBeneficiaryForm";
+import MemberDetailPanel from "./components/MemberDetailPanel";
 import { listRecentTransactions } from "./services/transactionService";
 import { getAgriculturalAdvice } from "./lib/weather";
 import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction } from "./types/firestore";
@@ -2211,8 +2213,11 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [profilesLoading, setProfilesLoading] = useState(true);
   const [txsLoading, setTxsLoading] = useState(true);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [selectedMemberUid, setSelectedMemberUid] = useState<string | null>(null);
 
-  useEffect(() => { listProfiles().then((p) => { setProfiles(p); setProfilesLoading(false); }); }, []);
+  const refreshProfiles = () => { listProfiles().then((p) => { setProfiles(p); setProfilesLoading(false); }); };
+  useEffect(refreshProfiles, []);
   useEffect(() => { const u = subscribeToGuaranteeFund(setFund); return () => u(); }, []);
   useEffect(() => { const u = subscribeToPendingCredits(setPendingCredits); return () => u(); }, []);
   useEffect(() => { countActiveCredits().then(setActiveCreditsCount); }, [pendingCredits]);
@@ -2351,7 +2356,13 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
         {/* ── MEMBRES ── */}
         {tab === "clients" && (
           <div className="space-y-4">
-            <h2 className="text-lg font-black text-stone-900">Membres</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-black text-stone-900">Membres</h2>
+              <button onClick={() => setShowAddMember(true)}
+                className="flex items-center gap-1.5 bg-violet-600 text-white rounded-xl px-3 py-2 text-xs font-bold">
+                <UserPlus className="w-3.5 h-3.5" /> Ajouter
+              </button>
+            </div>
             {profilesLoading && <SkeletonList rows={4} />}
             {!profilesLoading && profiles.length === 0 && (
               <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
@@ -2361,7 +2372,8 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
             )}
             <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
               {profiles.map((m) => (
-                <div key={m.uid} className="px-4 py-3.5 flex items-center gap-3 border-b border-stone-50 last:border-0">
+                <button key={m.uid} onClick={() => setSelectedMemberUid(m.uid)}
+                  className="w-full px-4 py-3.5 flex items-center gap-3 border-b border-stone-50 last:border-0 text-left hover:bg-stone-50">
                   <Avatar name={m.fullName} size="md" />
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-stone-900 text-sm">{m.fullName}</div>
@@ -2370,7 +2382,8 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
                     m.kycStatus === "pending" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
                   }`}>{m.kycStatus === "pending" ? "KYC en attente" : m.kycStatus}</span>
-                </div>
+                  {!m.active && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 flex-shrink-0">Inactif</span>}
+                </button>
               ))}
             </div>
             <p className="text-xs text-center text-stone-400">{profiles.length} membre(s) enregistré(s)</p>
@@ -2480,6 +2493,13 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
           </div>
         )}
       </main>
+      {showAddMember && (
+        <AddBeneficiaryForm onClose={() => setShowAddMember(false)}
+          onDone={() => { setShowAddMember(false); refreshProfiles(); }} />
+      )}
+      {selectedMemberUid && (
+        <MemberDetailPanel uid={selectedMemberUid} onClose={() => { setSelectedMemberUid(null); refreshProfiles(); }} />
+      )}
     </div>
   );
 }

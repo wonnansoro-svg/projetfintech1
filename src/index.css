@@ -9,7 +9,11 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
+  /* L'app n'a pas encore de mode sombre : on force le rendu clair pour que les
+     champs de saisie restent lisibles même si le téléphone est en thème sombre
+     (sinon le navigateur applique un texte clair sur nos fonds clairs). */
+  color-scheme: light;
+  color: #1c1917;
   background-color: #f8fafc; /* Une base légèrement grise pour faire ressortir ton conteneur */
 }
 
