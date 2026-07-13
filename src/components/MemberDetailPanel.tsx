@@ -8,7 +8,7 @@ import { recordContribution } from "../services/contributionService";
 import type { Profile, Parcel, Credit, Transaction, Role, KycStatus } from "../types/firestore";
 
 const KYC_LABELS: Record<KycStatus, string> = { pending: "En attente", level1: "Niveau 1", level2: "Niveau 2" };
-const ROLE_LABELS: Record<Role, string> = { farmer: "🌾 Agriculteur", investor: "🏢 Investisseur", admin: "⚙️ Admin", agent: "🧑‍🌾 Agent" };
+const ROLE_LABELS: Record<Role, string> = { farmer: "🌾 Agriculteur", investor: "🏢 Investisseur", admin: "⚙️ Admin", agent: "🧑‍🌾 Superviseur" };
 
 export default function MemberDetailPanel({ uid, onClose }: { uid: string; onClose: () => void }) {
   const [profile, setProfile] = useState<Profile | null>(null);

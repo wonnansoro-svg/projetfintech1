@@ -7,6 +7,7 @@ import {
   Recycle, FileText, Camera, BarChart2, CreditCard, Building2,
   Package, BadgeCheck, ChevronRight, Star, TrendingUp, Banknote,
   LogOut, Settings, Bell, PieChart, Activity, DollarSign, X, UserPlus,
+  UsersRound, Plus,
 } from "lucide-react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -24,6 +25,7 @@ import {
 } from "./services/creditService";
 import { computeCreditCeiling, computeFinancingScore } from "./lib/credit";
 import { listProfiles, updateProfile } from "./services/profileService";
+import { createGroup, subscribeToGroupsByCooperative } from "./services/groupService";
 import { uploadKycPhoto, uploadLossPhoto } from "./services/storageService";
 import { submitLossClaim, getUserLossValueFcfa } from "./services/lossService";
 import DocumentPreviewModal from "./components/DocumentPreviewModal";
@@ -42,7 +44,7 @@ import AddBeneficiaryForm from "./components/AddBeneficiaryForm";
 import MemberDetailPanel from "./components/MemberDetailPanel";
 import { listRecentTransactions } from "./services/transactionService";
 import { getAgriculturalAdvice } from "./lib/weather";
-import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction } from "./types/firestore";
+import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction, SusuGroup } from "./types/firestore";
 
 // ==================== COMPOSANTS RÉUTILISABLES ====================
 
@@ -2799,18 +2801,29 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
 
 // ==================== AGENT TERRAIN SPACE ====================
 
-function AgentSpace({ onLogout }: { onLogout: () => void }) {
-  const [tab, setTab] = useState<"beneficiaires" | "collecte">("beneficiaires");
+function SupervisorSpace({ onLogout }: { onLogout: () => void }) {
+  const [tab, setTab] = useState<"beneficiaires" | "collecte" | "groupes">("beneficiaires");
   const { online, pushToast } = useApp();
   const { profile } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(true);
   const [selected, setSelected] = useState<Profile | null>(null);
   const [weeks, setWeeks] = useState(1);
+  const [groups, setGroups] = useState<SusuGroup[]>([]);
+  const [showAddBeneficiary, setShowAddBeneficiary] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
 
-  useEffect(() => { listProfiles().then((p) => { setProfiles(p); setProfilesLoading(false); }); }, []);
+  const refreshProfiles = () => { listProfiles().then((p) => { setProfiles(p); setProfilesLoading(false); }); };
+  useEffect(refreshProfiles, []);
+
+  useEffect(() => {
+    if (!profile?.cooperativeId) return;
+    const u = subscribeToGroupsByCooperative(profile.cooperativeId, setGroups);
+    return () => u();
+  }, [profile?.cooperativeId]);
 
   const beneficiaries = profiles.filter((p) => p.role === "farmer" && p.cooperativeId === profile?.cooperativeId);
+  const nameByUid = new Map(profiles.map((p) => [p.uid, p.fullName]));
   const amount = WEEKLY_CONTRIBUTION * weeks;
 
   const selectBeneficiary = (p: Profile) => {
@@ -2832,8 +2845,9 @@ function AgentSpace({ onLogout }: { onLogout: () => void }) {
   };
 
   const navItems = [
-    { id: "beneficiaires", icon: Users, label: "Bénéficiaires" },
-    { id: "collecte",      icon: QrCode, label: "Collecte"     },
+    { id: "beneficiaires", icon: Users,      label: "Bénéficiaires" },
+    { id: "collecte",      icon: QrCode,     label: "Collecte"      },
+    { id: "groupes",       icon: UsersRound, label: "Groupes"       },
   ] as const;
 
   return (
@@ -2845,7 +2859,7 @@ function AgentSpace({ onLogout }: { onLogout: () => void }) {
               <QrCode className="w-4 h-4 text-white" />
             </div>
             <div>
-              <div className="font-black text-stone-900 text-sm">Agent terrain</div>
+              <div className="font-black text-stone-900 text-sm">Superviseur</div>
               <div className="flex items-center gap-1 text-[10px] text-stone-400">
                 {online ? <Wifi className="w-3 h-3 text-emerald-500" /> : <WifiOff className="w-3 h-3 text-amber-500" />}
                 COOPAVEC · {profile?.cooperativeId}
@@ -2860,7 +2874,7 @@ function AgentSpace({ onLogout }: { onLogout: () => void }) {
       </header>
 
       <nav className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-lg border-t border-stone-200 z-30">
-        <div className="max-w-xl mx-auto grid grid-cols-2">
+        <div className="max-w-xl mx-auto grid grid-cols-3">
           {navItems.map(it => {
             const Icon = it.icon;
             const active = tab === it.id;
@@ -2881,7 +2895,13 @@ function AgentSpace({ onLogout }: { onLogout: () => void }) {
       <main className="max-w-xl mx-auto px-4 py-5 pb-24">
         {tab === "beneficiaires" && (
           <div className="space-y-4">
-            <h2 className="text-lg font-black text-stone-900">Bénéficiaires de mon secteur</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-black text-stone-900">Bénéficiaires de mon secteur</h2>
+              <button onClick={() => setShowAddBeneficiary(true)}
+                className="flex items-center gap-1.5 bg-sky-600 text-white rounded-xl px-3 py-2 text-xs font-bold">
+                <UserPlus className="w-3.5 h-3.5" /> Ajouter
+              </button>
+            </div>
             {profilesLoading && <SkeletonList rows={4} />}
             {!profilesLoading && beneficiaries.length === 0 && (
               <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
@@ -2950,7 +2970,142 @@ function AgentSpace({ onLogout }: { onLogout: () => void }) {
             )}
           </div>
         )}
+
+        {tab === "groupes" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-black text-stone-900">Groupes Bokanmin</h2>
+              <button onClick={() => setShowCreateGroup(true)}
+                className="flex items-center gap-1.5 bg-sky-600 text-white rounded-xl px-3 py-2 text-xs font-bold">
+                <Plus className="w-3.5 h-3.5" /> Créer
+              </button>
+            </div>
+            {groups.length === 0 && (
+              <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+                <UsersRound className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                <div className="text-sm text-stone-500 font-medium">Aucun groupe créé dans votre coopérative</div>
+              </div>
+            )}
+            <div className="space-y-3">
+              {groups.map((g) => (
+                <div key={g.id} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+                  <div className="font-bold text-stone-900 text-sm mb-1">{g.name}</div>
+                  <div className="text-xs text-stone-500 mb-2">{g.memberIds.length} membre{g.memberIds.length > 1 ? "s" : ""} · {g.contributionAmount.toLocaleString("fr-FR")} F / semaine</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {g.memberIds.map((uid) => (
+                      <span key={uid} className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700">
+                        {nameByUid.get(uid) ?? uid}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
+
+      {showAddBeneficiary && (
+        <AddBeneficiaryForm allowedRoles={["farmer"]} onClose={() => setShowAddBeneficiary(false)}
+          onDone={() => { setShowAddBeneficiary(false); refreshProfiles(); }} />
+      )}
+      {showCreateGroup && profile && (
+        <CreateGroupModal cooperativeId={profile.cooperativeId} beneficiaries={beneficiaries}
+          onClose={() => setShowCreateGroup(false)}
+          onDone={() => { setShowCreateGroup(false); pushToast({ tone: "success", title: "Groupe créé !", message: "" }); }} />
+      )}
+    </div>
+  );
+}
+
+function CreateGroupModal({ cooperativeId, beneficiaries, onClose, onDone }: {
+  cooperativeId: string; beneficiaries: Profile[]; onClose: () => void; onDone: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [contributionAmount, setContributionAmount] = useState(WEEKLY_CONTRIBUTION);
+  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const toggleMember = (uid: string) => {
+    setMemberIds((prev) => (prev.includes(uid) ? prev.filter((x) => x !== uid) : [...prev, uid]));
+  };
+
+  const valid = name.trim().length > 0 && contributionAmount > 0 && memberIds.length > 0;
+
+  const handleSubmit = async () => {
+    if (!valid) return;
+    setSaving(true);
+    setError("");
+    try {
+      await createGroup({ name: name.trim(), cooperativeId, contributionAmount, memberIds });
+      onDone();
+    } catch (err) {
+      console.error("Erreur création groupe :", err);
+      setError("Impossible de créer le groupe. Réessayez.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
+          <div className="font-black text-stone-800">🤝 Nouveau groupe Bokanmin</div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {error && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-xl flex items-center gap-2 text-sm">
+              <AlertCircle className="w-4 h-4 shrink-0" /><p>{error}</p>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Nom du groupe</label>
+            <input value={name} onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none text-sm"
+              placeholder="Ex : Groupe Village Nord" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Cotisation hebdomadaire (F)</label>
+            <input type="number" min={0} step={100} value={contributionAmount}
+              onChange={(e) => setContributionAmount(Number(e.target.value))}
+              className="w-full px-3 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none text-sm" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Membres ({memberIds.length} sélectionné{memberIds.length > 1 ? "s" : ""})</label>
+            <div className="bg-stone-50 border border-stone-200 rounded-xl divide-y divide-stone-200 max-h-56 overflow-y-auto">
+              {beneficiaries.length === 0 && (
+                <div className="p-3 text-xs text-stone-500 text-center">Aucun bénéficiaire disponible</div>
+              )}
+              {beneficiaries.map((b) => (
+                <button key={b.uid} type="button" onClick={() => toggleMember(b.uid)}
+                  className="w-full px-3 py-2.5 flex items-center gap-2.5 text-left">
+                  <div className={`w-4.5 h-4.5 rounded-md border flex-shrink-0 flex items-center justify-center ${
+                    memberIds.includes(b.uid) ? "bg-sky-600 border-sky-600" : "bg-white border-stone-300"
+                  }`}>
+                    {memberIds.includes(b.uid) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                  </div>
+                  <span className="text-sm font-medium text-stone-700">{b.fullName}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button onClick={handleSubmit} disabled={!valid || saving}
+            className="w-full py-4 rounded-2xl font-black text-white bg-sky-600 disabled:opacity-50 flex items-center justify-center gap-2">
+            {saving ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            Créer le groupe
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2985,7 +3140,7 @@ function Shell() {
 
   if (role === "admin")  return <AdminSpace  onLogout={handleLogout} />;
   if (role === "investor") return <ClientSpace onLogout={handleLogout} />;
-  if (role === "agent")    return <AgentSpace  onLogout={handleLogout} />;
+  if (role === "agent")    return <SupervisorSpace onLogout={handleLogout} />;
 
   // ── FARMER ──
   const bottomPages = new Set<string>(["home", "weather", "parcelles", "payments", "identity"]);

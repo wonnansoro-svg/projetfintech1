@@ -92,7 +92,7 @@ export async function updateProfile(uid: string, patch: Partial<Profile>): Promi
   await updateDoc(doc(db, PROFILES, uid), { ...patch, updatedAt: Date.now() });
 }
 
-/** Liste tous les profils — réservé à l'espace admin. */
+/** Liste tous les profils — utilisé par l'espace admin et l'espace superviseur (terrain). */
 export async function listProfiles(): Promise<Profile[]> {
   const snap = await getDocs(collection(db, PROFILES));
   return snap.docs.map((d) => d.data() as Profile);

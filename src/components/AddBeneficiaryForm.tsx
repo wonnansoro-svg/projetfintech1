@@ -4,8 +4,14 @@ import { createProfileAsAdmin, type AdminCreatedAccount } from "../services/prof
 import { CROPS } from "../lib/crops";
 import type { Crop, Role } from "../types/firestore";
 
-export default function AddBeneficiaryForm({ onClose, onDone }: {
-  onClose: () => void; onDone: () => void;
+const ROLE_OPTIONS: { key: Role; label: string }[] = [
+  { key: "farmer", label: "🌾 Agriculteur" },
+  { key: "investor", label: "🏢 Investisseur" },
+  { key: "agent", label: "🧑‍🌾 Superviseur" },
+];
+
+export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["farmer", "investor", "agent"] }: {
+  onClose: () => void; onDone: () => void; allowedRoles?: Role[];
 }) {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -13,7 +19,7 @@ export default function AddBeneficiaryForm({ onClose, onDone }: {
   const [region, setRegion] = useState("");
   const [cooperativeId, setCooperativeId] = useState("");
   const [crops, setCrops] = useState<Crop[]>([]);
-  const [role, setRole] = useState<Role>("farmer");
+  const [role, setRole] = useState<Role>(allowedRoles[0]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<AdminCreatedAccount | null>(null);
@@ -137,19 +143,21 @@ export default function AddBeneficiaryForm({ onClose, onDone }: {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-stone-700 mb-1.5">Rôle</label>
-              <div className="grid grid-cols-3 gap-2">
-                {([["farmer", "🌾 Agriculteur"], ["investor", "🏢 Investisseur"], ["agent", "🧑‍🌾 Agent terrain"]] as const).map(([r, l]) => (
-                  <button key={r} type="button" onClick={() => setRole(r)}
-                    className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
-                      role === r ? "bg-violet-600 text-white border-violet-600" : "bg-stone-50 text-stone-600 border-stone-200"
-                    }`}>
-                    {l}
-                  </button>
-                ))}
+            {allowedRoles.length > 1 && (
+              <div>
+                <label className="block text-sm font-semibold text-stone-700 mb-1.5">Rôle</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {ROLE_OPTIONS.filter((o) => allowedRoles.includes(o.key)).map((o) => (
+                    <button key={o.key} type="button" onClick={() => setRole(o.key)}
+                      className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
+                        role === o.key ? "bg-violet-600 text-white border-violet-600" : "bg-stone-50 text-stone-600 border-stone-200"
+                      }`}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <div>
               <label className="block text-sm font-semibold text-stone-700 mb-1.5">Cultures</label>
