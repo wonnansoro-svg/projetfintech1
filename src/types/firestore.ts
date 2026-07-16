@@ -6,6 +6,13 @@ export type Role = "farmer" | "admin" | "investor" | "agent";
 export type KycStatus = "pending" | "level1" | "level2";
 export type Crop = "maize" | "millet" | "rice" | "anacarde" | "cacao" | "manioc" | "vivrier" | "palmier" | "hevea" | "autre";
 
+/** Droits togglables par l'admin sur un compte superviseur (role "agent"). Absent/null = tout autorisé (rétrocompatible). */
+export type SupervisorPermission =
+  | "beneficiary_create" | "beneficiary_edit" | "beneficiary_deactivate"
+  | "group_create" | "group_edit" | "group_delete"
+  | "contribution_collect"
+  | "view_beneficiaries" | "view_totals" | "view_groups";
+
 export interface Profile {
   uid: string;
   role: Role;
@@ -20,6 +27,10 @@ export interface Profile {
   kycIdPhotoUrl: string | null;
   verificationCode: string;
   active: boolean;
+  /** Superviseur (role "agent") responsable de ce bénéficiaire — créé automatiquement ou réassigné par l'admin. */
+  supervisorId: string | null;
+  /** Uniquement significatif si role === "agent". */
+  permissions: Partial<Record<SupervisorPermission, boolean>> | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -84,6 +95,10 @@ export interface Contribution {
   userId: string;
   groupId: string | null;
   amount: number;
+  /** Part assurance/cotisation (fonds de garantie) — visible admin uniquement. */
+  insurancePart: number;
+  /** Part frais de gestion de la coopérative — visible admin uniquement, n'alimente pas le fonds de garantie. */
+  managementFeePart: number;
   kind: ContributionKind;
   status: "confirmed";
   createdAt: number;
@@ -139,6 +154,18 @@ export interface Credit {
   requestedAt: number;
   decidedAt: number | null;
   decidedBy: string | null;
+  /** Montant déjà racheté par des investisseurs (marketplace de bons) — plafonné à approvedAmount. */
+  investedAmount: number;
+}
+
+/** Investissement d'un investisseur dans un bon (Credit approuvé/actif d'un agriculteur). */
+export interface BondInvestment {
+  id: string;
+  creditId: string;
+  investorId: string;
+  farmerId: string;
+  amount: number;
+  createdAt: number;
 }
 
 export type TxType =

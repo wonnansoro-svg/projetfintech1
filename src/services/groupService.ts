@@ -1,4 +1,4 @@
-import { addDoc, collection, onSnapshot, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../firebase";
 import type { SusuGroup } from "../types/firestore";
 
@@ -34,4 +34,24 @@ export function subscribeToGroupsByCooperative(cooperativeId: string, onChange: 
   return onSnapshot(q, (snap) => {
     onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() } as SusuGroup)));
   });
+}
+
+export interface GroupEditInput {
+  name: string;
+  contributionAmount: number;
+  memberIds: string[];
+}
+
+export async function updateGroup(groupId: string, input: GroupEditInput): Promise<void> {
+  await updateDoc(doc(db, GROUPS, groupId), {
+    name: input.name,
+    contributionAmount: input.contributionAmount,
+    memberIds: input.memberIds,
+    rotationOrder: input.memberIds,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function deleteGroup(groupId: string): Promise<void> {
+  await deleteDoc(doc(db, GROUPS, groupId));
 }

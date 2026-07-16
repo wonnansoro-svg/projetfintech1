@@ -7,13 +7,14 @@ import { DEFAULT_GUARANTEE_FUND, DEFAULT_CREDIT_SETTINGS, FUND_DOC, CREDIT_SETTI
 import { computeCreditCeiling, computeFinancingScore, isEligibleForCredit, buildRepaymentSchedule } from "../lib/credit";
 import { getUserLossValueFcfa } from "./lossService";
 import { buildNotification } from "./notificationService";
-import type { Credit, CreditSettings, GuaranteeFund, Wallet } from "../types/firestore";
+import type { BondInvestment, Credit, CreditSettings, GuaranteeFund, Wallet } from "../types/firestore";
 
 const CREDITS = "credits";
 const WALLETS = "wallets";
 const TRANSACTIONS = "transactions";
 const CONTRIBUTIONS = "contributions";
 const NOTIFICATIONS = "notifications";
+const BOND_INVESTMENTS = "bondInvestments";
 
 async function countConfirmedContributions(userId: string): Promise<number> {
   const q = query(collection(db, CONTRIBUTIONS), where("userId", "==", userId));
@@ -42,7 +43,7 @@ export async function requestCredit(userId: string, requestedAmount: number): Pr
   const now = Date.now();
   const creditRef = doc(collection(db, CREDITS));
   const credit: Credit = {
-    id: creditRef.id, userId, requestedAmount, approvedAmount: null, status: "pending",
+    id: creditRef.id, userId, requestedAmount, approvedAmount: null, status: "pending", investedAmount: 0,
     interestRatePerMonth: settings.monthlyRate, termMonths: settings.termMonths, schedule: [],
     calculationSnapshot: {
       personalContribution12m: wallet?.contributionsLast12m ?? 0,
@@ -53,6 +54,11 @@ export async function requestCredit(userId: string, requestedAmount: number): Pr
   };
   await setDoc(creditRef, credit);
   return creditRef.id;
+}
+
+export async function getCredit(creditId: string): Promise<Credit | null> {
+  const snap = await getDoc(doc(db, CREDITS, creditId));
+  return snap.exists() ? (snap.data() as Credit) : null;
 }
 
 export function subscribeToUserCredits(userId: string, onChange: (credits: Credit[]) => void) {
@@ -126,6 +132,65 @@ export async function approveCredit(creditId: string, adminUid: string): Promise
 
     return { disbursed: true };
   });
+}
+
+/** Bons disponibles à l'investissement : demandes approuvées/actives pas encore entièrement financées par des investisseurs. */
+export function subscribeToInvestableBonds(onChange: (credits: Credit[]) => void) {
+  const q = query(collection(db, CREDITS), where("status", "in", ["approved", "active"]));
+  return onSnapshot(q, (snap) => {
+    const credits = snap.docs.map((d) => d.data() as Credit);
+    onChange(credits.filter((c) => c.investedAmount < (c.approvedAmount ?? 0)));
+  });
+}
+
+/**
+ * Un investisseur "achète" une part d'un bon déjà décaissé au fermier par le
+ * fonds de garantie : son solde est débité, et le même montant réalimente le
+ * fonds de garantie (donc la capacité de prêt de la coopérative) — le fermier
+ * ne reçoit pas d'argent supplémentaire ici, il a déjà été payé à l'approbation.
+ */
+export async function investInBond(investorId: string, creditId: string, amount: number): Promise<void> {
+  if (amount <= 0) throw new Error("Le montant doit être positif.");
+  const creditRef = doc(db, CREDITS, creditId);
+  const walletRef = doc(db, WALLETS, investorId);
+  const now = Date.now();
+
+  await runTransaction(db, async (tx) => {
+    const [creditSnap, walletSnap, fundSnap] = await Promise.all([tx.get(creditRef), tx.get(walletRef), tx.get(FUND_DOC)]);
+    if (!creditSnap.exists()) throw new Error("Bon introuvable.");
+    const credit = creditSnap.data() as Credit;
+    if (credit.approvedAmount === null) throw new Error("Ce bon n'est pas encore approuvé.");
+    const remaining = credit.approvedAmount - credit.investedAmount;
+    if (amount > remaining) throw new Error(`Montant supérieur au reste à financer (${remaining.toLocaleString("fr-FR")} F).`);
+
+    const wallet = walletSnap.exists()
+      ? (walletSnap.data() as Wallet)
+      : { uid: investorId, balance: 0, totalContributed: 0, contributionsLast12m: 0, updatedAt: now };
+    if (wallet.balance < amount) throw new Error("Solde insuffisant.");
+    const fund = fundSnap.exists() ? (fundSnap.data() as GuaranteeFund) : DEFAULT_GUARANTEE_FUND;
+
+    const newFundTotal = fund.totalDeposited + amount;
+    const newAvailable = newFundTotal * (1 - fund.reserveRatio) - fund.totalDisbursedAsCredits;
+
+    tx.set(creditRef, { ...credit, investedAmount: credit.investedAmount + amount });
+    tx.set(walletRef, { ...wallet, balance: wallet.balance - amount, updatedAt: now });
+    tx.set(FUND_DOC, { ...fund, totalDeposited: newFundTotal, availableForCredit: Math.max(0, newAvailable), updatedAt: now });
+
+    const investmentRef = doc(collection(db, BOND_INVESTMENTS));
+    const investment: BondInvestment = { id: investmentRef.id, creditId, investorId, farmerId: credit.userId, amount, createdAt: now };
+    tx.set(investmentRef, investment);
+
+    const txRef = doc(collection(db, TRANSACTIONS));
+    tx.set(txRef, {
+      id: txRef.id, userId: investorId, type: "send", amount,
+      label: "Achat de bon de financement participatif", relatedCreditId: creditId, createdAt: now,
+    });
+  });
+}
+
+export function subscribeToInvestorBonds(investorId: string, onChange: (investments: BondInvestment[]) => void) {
+  const q = query(collection(db, BOND_INVESTMENTS), where("investorId", "==", investorId), orderBy("createdAt", "desc"));
+  return onSnapshot(q, (snap) => onChange(snap.docs.map((d) => d.data() as BondInvestment)));
 }
 
 export async function rejectCredit(creditId: string, adminUid: string, reason: string): Promise<void> {

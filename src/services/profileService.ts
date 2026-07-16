@@ -18,6 +18,8 @@ export interface NewProfileInput {
   cooperativeId: string;
   crops: Crop[];
   role?: Role;
+  /** Superviseur responsable (renseigné automatiquement quand la création vient de l'espace superviseur). */
+  supervisorId?: string | null;
 }
 
 export async function getProfile(uid: string): Promise<Profile | null> {
@@ -47,6 +49,8 @@ async function writeProfileDocs(uid: string, input: NewProfileInput): Promise<Pr
     kycIdPhotoUrl: null,
     verificationCode: generateVerificationCode(),
     active: true,
+    supervisorId: input.supervisorId ?? null,
+    permissions: null,
     createdAt: now,
     updatedAt: now,
   };

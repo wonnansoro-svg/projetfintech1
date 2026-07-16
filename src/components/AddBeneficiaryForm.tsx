@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X, User, Phone, MapPin, Building2, Loader, CheckCircle2, AlertCircle, Copy } from "lucide-react";
 import { createProfileAsAdmin, type AdminCreatedAccount } from "../services/profileService";
 import { CROPS } from "../lib/crops";
+import { useBackGuard } from "../lib/backGuard";
 import type { Crop, Role } from "../types/firestore";
 
 const ROLE_OPTIONS: { key: Role; label: string }[] = [
@@ -10,8 +11,8 @@ const ROLE_OPTIONS: { key: Role; label: string }[] = [
   { key: "agent", label: "🧑‍🌾 Superviseur" },
 ];
 
-export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["farmer", "investor", "agent"] }: {
-  onClose: () => void; onDone: () => void; allowedRoles?: Role[];
+export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["farmer", "investor", "agent"], supervisorId = null }: {
+  onClose: () => void; onDone: () => void; allowedRoles?: Role[]; supervisorId?: string | null;
 }) {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -24,6 +25,8 @@ export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["f
   const [error, setError] = useState("");
   const [created, setCreated] = useState<AdminCreatedAccount | null>(null);
   const [copied, setCopied] = useState(false);
+
+  useBackGuard(true, created ? onDone : onClose);
 
   const toggleCrop = (c: Crop) => {
     setCrops((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
@@ -39,7 +42,7 @@ export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["f
     try {
       const account = await createProfileAsAdmin({
         fullName: fullName.trim(), phone: phone.trim(), village: village.trim(),
-        region: region.trim(), cooperativeId: cooperativeId.trim(), crops, role,
+        region: region.trim(), cooperativeId: cooperativeId.trim(), crops, role, supervisorId,
       });
       setCreated(account);
     } catch (err) {

@@ -7,7 +7,7 @@ import {
   Recycle, FileText, Camera, BarChart2, CreditCard, Building2,
   Package, BadgeCheck, ChevronRight, Star, TrendingUp, Banknote,
   LogOut, Settings, Bell, PieChart, Activity, DollarSign, X, UserPlus,
-  UsersRound, Plus,
+  UsersRound, Plus, Pencil, Trash2,
 } from "lucide-react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -17,15 +17,17 @@ import AddParcelForm from "./components/AddParcelForm";
 import IdentityQRCode from "./components/IdentityQRCode";
 import { getCurrentLocation, type GeoPoint } from "./lib/geolocation";
 import { subscribeToGuaranteeFund, subscribeToCreditSettings } from "./services/fundService";
-import { recordContribution, computeWeeklyStreak } from "./services/contributionService";
+import { recordContribution, computeWeeklyStreak, getContributionSplitTotals, getContributionsTotalForUsers } from "./services/contributionService";
 import { subscribeToWallet } from "./services/walletService";
 import {
   requestCredit, subscribeToUserCredits, subscribeToPendingCredits,
   approveCredit, rejectCredit, countActiveCredits,
+  subscribeToInvestableBonds, subscribeToInvestorBonds, investInBond, getCredit,
 } from "./services/creditService";
 import { computeCreditCeiling, computeFinancingScore } from "./lib/credit";
-import { listProfiles, updateProfile } from "./services/profileService";
-import { createGroup, subscribeToGroupsByCooperative } from "./services/groupService";
+import { listProfiles, updateProfile, getProfile } from "./services/profileService";
+import { createGroup, updateGroup, deleteGroup, subscribeToGroupsByCooperative } from "./services/groupService";
+import { hasPermission } from "./lib/permissions";
 import { uploadKycPhoto, uploadLossPhoto } from "./services/storageService";
 import { submitLossClaim, getUserLossValueFcfa } from "./services/lossService";
 import DocumentPreviewModal from "./components/DocumentPreviewModal";
@@ -44,7 +46,8 @@ import AddBeneficiaryForm from "./components/AddBeneficiaryForm";
 import MemberDetailPanel from "./components/MemberDetailPanel";
 import { listRecentTransactions } from "./services/transactionService";
 import { getAgriculturalAdvice } from "./lib/weather";
-import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction, SusuGroup } from "./types/firestore";
+import { useBackGuard } from "./lib/backGuard";
+import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction, SusuGroup, BondInvestment } from "./types/firestore";
 
 // ==================== COMPOSANTS RÉUTILISABLES ====================
 
@@ -2240,6 +2243,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
   const [txsLoading, setTxsLoading] = useState(true);
   const [showAddMember, setShowAddMember] = useState(false);
   const [selectedMemberUid, setSelectedMemberUid] = useState<string | null>(null);
+  const [splitTotals, setSplitTotals] = useState({ insurance: 0, managementFee: 0 });
 
   const refreshProfiles = () => { listProfiles().then((p) => { setProfiles(p); setProfilesLoading(false); }); };
   useEffect(refreshProfiles, []);
@@ -2247,6 +2251,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
   useEffect(() => { const u = subscribeToPendingCredits(setPendingCredits); return () => u(); }, []);
   useEffect(() => { countActiveCredits().then(setActiveCreditsCount); }, [pendingCredits]);
   useEffect(() => { listRecentTransactions(8).then((t) => { setRecentTxs(t); setTxsLoading(false); }); }, []);
+  useEffect(() => { getContributionSplitTotals().then(setSplitTotals); }, []);
 
   const nameByUid = new Map(profiles.map((p) => [p.uid, p.fullName]));
 
@@ -2255,6 +2260,8 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
     { label: "Fonds de garantie déposé",  val: `${(fund?.totalDeposited ?? 0).toLocaleString("fr-FR")} F`, icon: DollarSign },
     { label: "Disponible pour crédits",   val: `${(fund?.availableForCredit ?? 0).toLocaleString("fr-FR")} F`, icon: Activity },
     { label: "Crédits actifs",            val: activeCreditsCount.toLocaleString("fr-FR"), icon: CreditCard },
+    { label: "Total cotisations — assurance",       val: `${splitTotals.insurance.toLocaleString("fr-FR")} F`, icon: Shield },
+    { label: "Total cotisations — frais de gestion", val: `${splitTotals.managementFee.toLocaleString("fr-FR")} F`, icon: Banknote },
   ];
 
   const decide = async (creditId: string, action: "approve" | "reject") => {
@@ -2523,7 +2530,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
           onDone={() => { setShowAddMember(false); refreshProfiles(); }} />
       )}
       {selectedMemberUid && (
-        <MemberDetailPanel uid={selectedMemberUid} onClose={() => { setSelectedMemberUid(null); refreshProfiles(); }} />
+        <MemberDetailPanel uid={selectedMemberUid} allProfiles={profiles} onClose={() => { setSelectedMemberUid(null); refreshProfiles(); }} />
       )}
     </div>
   );
@@ -2533,14 +2540,49 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
 
 function ClientSpace({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<"apercu" | "projets" | "rapports" | "profil">("apercu");
-  const { online } = useApp();
+  const { online, transactions } = useApp();
   const { profile } = useAuth();
+  const [balance, setBalance] = useState(0);
+  const [bonds, setBonds] = useState<Credit[]>([]);
+  const [farmerNames, setFarmerNames] = useState<Record<string, string>>({});
+  const [myInvestments, setMyInvestments] = useState<BondInvestment[]>([]);
+  const [investmentCredits, setInvestmentCredits] = useState<Record<string, Credit>>({});
+  const [investingBond, setInvestingBond] = useState<Credit | null>(null);
 
-  const projects = [
-    { name: "Anacarde Hambol",      emoji: "🥜", target: 500000, raised: 310000, ret: "12%", status: "En cours",  echeance: "Déc 2026" },
-    { name: "Irrigation Maïs",      emoji: "🌽", target: 200000, raised: 200000, ret: "10%", status: "Complet",   echeance: "Sep 2026" },
-    { name: "Cacao Bio Daloa",       emoji: "🍫", target: 800000, raised: 240000, ret: "15%", status: "En cours",  echeance: "Mar 2027" },
-  ];
+  useEffect(() => {
+    if (!profile?.uid) return;
+    const u = subscribeToWallet(profile.uid, (w) => setBalance(w?.balance ?? 0));
+    return () => u();
+  }, [profile?.uid]);
+
+  useEffect(() => { const u = subscribeToInvestableBonds(setBonds); return () => u(); }, []);
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    const u = subscribeToInvestorBonds(profile.uid, setMyInvestments);
+    return () => u();
+  }, [profile?.uid]);
+
+  const bondFarmerIds = bonds.map((b) => b.userId).join(",");
+  useEffect(() => {
+    const ids = Array.from(new Set(bonds.map((b) => b.userId)));
+    if (ids.length === 0) return;
+    Promise.all(ids.map((id) => getProfile(id))).then((profiles) => {
+      setFarmerNames((prev) => ({ ...prev, ...Object.fromEntries(profiles.filter((p): p is Profile => p !== null).map((p) => [p.uid, p.fullName])) }));
+    });
+  }, [bondFarmerIds]);
+
+  const investmentCreditIds = myInvestments.map((i) => i.creditId).join(",");
+  useEffect(() => {
+    const ids = Array.from(new Set(myInvestments.map((i) => i.creditId))).filter((id) => !investmentCredits[id]);
+    if (ids.length === 0) return;
+    Promise.all(ids.map((id) => getCredit(id))).then((credits) => {
+      setInvestmentCredits((prev) => ({ ...prev, ...Object.fromEntries(credits.filter((c): c is Credit => c !== null).map((c) => [c.id, c])) }));
+    });
+  }, [investmentCreditIds]);
+
+  const totalInvested = myInvestments.reduce((sum, i) => sum + i.amount, 0);
+  const activeBondCount = new Set(myInvestments.map((i) => i.creditId)).size;
 
   const navItems = [
     { id: "apercu",   icon: Home,       label: "Accueil"  },
@@ -2610,10 +2652,10 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
             {/* Portfolio */}
             <div className="bg-gradient-to-br from-sky-500 via-sky-600 to-indigo-700 rounded-3xl p-5 text-white shadow-xl">
               <div className="text-xs opacity-75 font-medium mb-1">Mon portefeuille</div>
-              <div className="text-4xl font-black tracking-tight">610 000 <span className="text-lg opacity-70">F</span></div>
+              <div className="text-4xl font-black tracking-tight">{balance.toLocaleString("fr-FR")} <span className="text-lg opacity-70">F</span></div>
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="bg-white/15 rounded-xl p-3"><div className="text-xs opacity-75">Rendement moyen</div><div className="font-black text-lg mt-0.5">11.5% /an</div></div>
-                <div className="bg-white/15 rounded-xl p-3"><div className="text-xs opacity-75">Projets actifs</div><div className="font-black text-lg mt-0.5">2 projets</div></div>
+                <div className="bg-white/15 rounded-xl p-3"><div className="text-xs opacity-75">Total investi</div><div className="font-black text-lg mt-0.5">{totalInvested.toLocaleString("fr-FR")} F</div></div>
+                <div className="bg-white/15 rounded-xl p-3"><div className="text-xs opacity-75">Bons financés</div><div className="font-black text-lg mt-0.5">{activeBondCount} bon{activeBondCount > 1 ? "s" : ""}</div></div>
               </div>
             </div>
 
@@ -2623,43 +2665,52 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
                 <p className="font-black text-stone-800 text-sm">Mes investissements</p>
                 <button onClick={() => setTab("projets")} className="text-xs text-sky-600 font-bold">Tout voir</button>
               </div>
+              {myInvestments.length === 0 && (
+                <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+                  <TrendingUp className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                  <div className="text-sm text-stone-500 font-medium">Aucun investissement pour l'instant</div>
+                </div>
+              )}
               <div className="space-y-2.5">
-                {[
-                  { name: "Anacarde Hambol", amount: 50000, gain: "+6 000 F", pct: "+12%", emoji: "🥜" },
-                  { name: "Irrigation Maïs", amount: 30000, gain: "+3 000 F", pct: "+10%", emoji: "🌽" },
-                ].map((inv, i) => (
-                  <div key={i} className="bg-white rounded-2xl p-3.5 border border-stone-100 shadow-sm flex items-center gap-3">
-                    <span className="text-2xl">{inv.emoji}</span>
-                    <div className="flex-1">
-                      <div className="font-bold text-stone-800 text-sm">{inv.name}</div>
-                      <div className="text-xs text-stone-500">{inv.amount.toLocaleString("fr-FR")} F investi</div>
+                {myInvestments.slice(0, 5).map((inv) => {
+                  const credit = investmentCredits[inv.creditId];
+                  const estimatedReturn = credit ? Math.round(inv.amount * credit.interestRatePerMonth * credit.termMonths) : null;
+                  return (
+                    <div key={inv.id} className="bg-white rounded-2xl p-3.5 border border-stone-100 shadow-sm flex items-center gap-3">
+                      <span className="text-2xl">🌾</span>
+                      <div className="flex-1">
+                        <div className="font-bold text-stone-800 text-sm">{farmerNames[inv.farmerId] ?? "Agriculteur"}</div>
+                        <div className="text-xs text-stone-500">{inv.amount.toLocaleString("fr-FR")} F investi</div>
+                      </div>
+                      {estimatedReturn !== null && (
+                        <div className="text-right">
+                          <div className="font-black text-emerald-600 text-sm">+{estimatedReturn.toLocaleString("fr-FR")} F</div>
+                          <div className="text-xs text-emerald-500 font-bold">estimé</div>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-right">
-                      <div className="font-black text-emerald-600 text-sm">{inv.gain}</div>
-                      <div className="text-xs text-emerald-500 font-bold">{inv.pct}</div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
             {/* Activité */}
             <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
               <div className="px-4 py-3 border-b border-stone-50 font-bold text-stone-800 text-sm">Activité récente</div>
-              {[
-                { icon: "💰", label: "Rendement Anacarde",        date: "28 juin",  amount: "+6 000 F",  pos: true  },
-                { icon: "📊", label: "Rapport semestriel dispo",  date: "25 juin",  amount: "—",         pos: null  },
-                { icon: "✅", label: "Investissement Maïs confirmé", date: "20 juin", amount:"-30 000 F", pos: false },
-              ].map((it, i) => (
-                <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-stone-50 last:border-0">
-                  <span className="text-lg">{it.icon}</span>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-stone-800">{it.label}</div>
-                    <div className="text-xs text-stone-400">{it.date}</div>
+              {transactions.length === 0 && <div className="px-4 py-4 text-sm text-stone-400">Aucune transaction</div>}
+              {transactions.slice(0, 6).map((tx) => {
+                const pos = ["deposit", "receive", "payout", "credit_disbursement"].includes(tx.type);
+                return (
+                  <div key={tx.id} className="flex items-center gap-3 px-4 py-3 border-b border-stone-50 last:border-0">
+                    <span className="text-lg">{pos ? "💰" : "📤"}</span>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-stone-800">{tx.label}</div>
+                      <div className="text-xs text-stone-400">{new Date(tx.createdAt).toLocaleDateString("fr-FR")}</div>
+                    </div>
+                    <div className={`text-sm font-bold ${pos ? "text-emerald-600" : "text-rose-600"}`}>{pos ? "+" : "-"}{tx.amount.toLocaleString("fr-FR")} F</div>
                   </div>
-                  <div className={`text-sm font-bold ${it.pos === true ? "text-emerald-600" : it.pos === false ? "text-rose-600" : "text-stone-400"}`}>{it.amount}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -2667,36 +2718,44 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
         {/* ── PROJETS ── */}
         {tab === "projets" && (
           <div className="space-y-4">
-            <h2 className="text-lg font-black text-stone-900">Projets disponibles</h2>
-            {projects.map((p, i) => {
-              const pct = Math.round(p.raised / p.target * 100);
+            <h2 className="text-lg font-black text-stone-900">Bons disponibles</h2>
+            {bonds.length === 0 && (
+              <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+                <TrendingUp className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                <div className="text-sm text-stone-500 font-medium">Aucun bon disponible pour le moment</div>
+              </div>
+            )}
+            {bonds.map((b) => {
+              const target = b.approvedAmount ?? 0;
+              const pct = target > 0 ? Math.round((b.investedAmount / target) * 100) : 0;
+              const complet = b.investedAmount >= target;
               return (
-                <div key={i} className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+                <div key={b.id} className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
                   <div className="p-4">
                     <div className="flex items-start gap-3 mb-3">
-                      <span className="text-3xl">{p.emoji}</span>
+                      <span className="text-3xl">🌾</span>
                       <div className="flex-1">
-                        <div className="font-black text-stone-900">{p.name}</div>
+                        <div className="font-black text-stone-900">{farmerNames[b.userId] ?? "Agriculteur"}</div>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.status === "Complet" ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-700"}`}>{p.status}</span>
-                          <span className="text-xs text-stone-400">Échéance {p.echeance}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${complet ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-700"}`}>{complet ? "Complet" : "En cours"}</span>
+                          <span className="text-xs text-stone-400">{b.termMonths} mois</span>
                         </div>
                       </div>
                       <div className="bg-lime-50 border border-lime-200 rounded-xl px-2.5 py-1.5 text-center">
-                        <div className="font-black text-lime-700 text-sm">{p.ret}</div>
-                        <div className="text-[9px] text-lime-600">/an</div>
+                        <div className="font-black text-lime-700 text-sm">{(b.interestRatePerMonth * 100).toFixed(0)}%</div>
+                        <div className="text-[9px] text-lime-600">/mois</div>
                       </div>
                     </div>
                     <div className="flex justify-between text-xs text-stone-400 mb-1.5">
-                      <span>{p.raised.toLocaleString("fr-FR")} F levés</span>
-                      <span className="font-black text-stone-700">{pct}%</span>
+                      <span>{b.investedAmount.toLocaleString("fr-FR")} F financés</span>
+                      <span className="font-black text-stone-700">{pct}% sur {target.toLocaleString("fr-FR")} F</span>
                     </div>
                     <div className="h-2 bg-stone-100 rounded-full overflow-hidden mb-3">
                       <div className="h-full bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
                     </div>
-                    {p.status !== "Complet" && (
-                      <button className="w-full py-3 bg-gradient-to-r from-sky-500 to-indigo-600 text-white rounded-xl font-bold text-sm">
-                        Investir dans ce projet
+                    {!complet && (
+                      <button onClick={() => setInvestingBond(b)} className="w-full py-3 bg-gradient-to-r from-sky-500 to-indigo-600 text-white rounded-xl font-bold text-sm">
+                        Investir dans ce bon
                       </button>
                     )}
                   </div>
@@ -2795,6 +2854,81 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
           </div>
         )}
       </main>
+
+      {investingBond && profile && (
+        <InvestBondModal bond={investingBond} investorId={profile.uid} balance={balance}
+          farmerName={farmerNames[investingBond.userId] ?? "Agriculteur"}
+          onClose={() => setInvestingBond(null)}
+          onDone={() => setInvestingBond(null)} />
+      )}
+    </div>
+  );
+}
+
+function InvestBondModal({ bond, investorId, balance, farmerName, onClose, onDone }: {
+  bond: Credit; investorId: string; balance: number; farmerName: string; onClose: () => void; onDone: () => void;
+}) {
+  useBackGuard(true, onClose);
+  const { pushToast } = useApp();
+  const remaining = (bond.approvedAmount ?? 0) - bond.investedAmount;
+  const [amount, setAmount] = useState(Math.min(10000, remaining));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const valid = amount > 0 && amount <= remaining && amount <= balance;
+
+  const handleInvest = async () => {
+    if (!valid) return;
+    setSaving(true);
+    setError("");
+    try {
+      await investInBond(investorId, bond.id, amount);
+      pushToast({ tone: "success", title: "Investissement confirmé !", message: `${amount.toLocaleString("fr-FR")} F` });
+      onDone();
+    } catch (err) {
+      console.error("Erreur investissement bon :", err);
+      setError(err instanceof Error ? err.message : "Impossible d'investir. Réessayez.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
+          <div className="font-black text-stone-800">🌱 Investir — {farmerName}</div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {error && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-xl flex items-center gap-2 text-sm">
+              <AlertCircle className="w-4 h-4 shrink-0" /><p>{error}</p>
+            </div>
+          )}
+
+          <div className="bg-stone-50 rounded-xl p-3 border border-stone-200 grid grid-cols-2 gap-2 text-center text-xs">
+            <div><div className="text-stone-500">Reste à financer</div><div className="font-black text-stone-800">{remaining.toLocaleString("fr-FR")} F</div></div>
+            <div><div className="text-stone-500">Mon solde</div><div className="font-black text-stone-800">{balance.toLocaleString("fr-FR")} F</div></div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Montant à investir (F)</label>
+            <input type="number" min={0} max={Math.min(remaining, balance)} step={500} value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+              className="w-full px-3 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none text-sm" />
+          </div>
+
+          <button onClick={handleInvest} disabled={!valid || saving}
+            className="w-full py-4 rounded-2xl font-black text-white bg-gradient-to-r from-sky-500 to-indigo-600 disabled:opacity-50 flex items-center justify-center gap-2">
+            {saving ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            Confirmer l'investissement
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2812,6 +2946,17 @@ function SupervisorSpace({ onLogout }: { onLogout: () => void }) {
   const [groups, setGroups] = useState<SusuGroup[]>([]);
   const [showAddBeneficiary, setShowAddBeneficiary] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<SusuGroup | null>(null);
+  const [selectedMemberUid, setSelectedMemberUid] = useState<string | null>(null);
+  const [myTotal, setMyTotal] = useState(0);
+
+  const canCreateBeneficiary = hasPermission(profile, "beneficiary_create");
+  const canEditBeneficiary = hasPermission(profile, "beneficiary_edit");
+  const canDeactivateBeneficiary = hasPermission(profile, "beneficiary_deactivate");
+  const canCollect = hasPermission(profile, "contribution_collect");
+  const canCreateGroup = hasPermission(profile, "group_create");
+  const canEditGroup = hasPermission(profile, "group_edit");
+  const canDeleteGroup = hasPermission(profile, "group_delete");
 
   const refreshProfiles = () => { listProfiles().then((p) => { setProfiles(p); setProfilesLoading(false); }); };
   useEffect(refreshProfiles, []);
@@ -2823,8 +2968,15 @@ function SupervisorSpace({ onLogout }: { onLogout: () => void }) {
   }, [profile?.cooperativeId]);
 
   const beneficiaries = profiles.filter((p) => p.role === "farmer" && p.cooperativeId === profile?.cooperativeId);
+  const myBeneficiaries = beneficiaries.filter((p) => p.supervisorId === profile?.uid);
   const nameByUid = new Map(profiles.map((p) => [p.uid, p.fullName]));
   const amount = WEEKLY_CONTRIBUTION * weeks;
+
+  useEffect(() => {
+    const ids = myBeneficiaries.map((p) => p.uid);
+    if (ids.length === 0) { setMyTotal(0); return; }
+    getContributionsTotalForUsers(ids).then(setMyTotal);
+  }, [myBeneficiaries.map((p) => p.uid).join(",")]);
 
   const selectBeneficiary = (p: Profile) => {
     setSelected(p);
@@ -2897,10 +3049,16 @@ function SupervisorSpace({ onLogout }: { onLogout: () => void }) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-black text-stone-900">Bénéficiaires de mon secteur</h2>
-              <button onClick={() => setShowAddBeneficiary(true)}
-                className="flex items-center gap-1.5 bg-sky-600 text-white rounded-xl px-3 py-2 text-xs font-bold">
-                <UserPlus className="w-3.5 h-3.5" /> Ajouter
-              </button>
+              {canCreateBeneficiary && (
+                <button onClick={() => setShowAddBeneficiary(true)}
+                  className="flex items-center gap-1.5 bg-sky-600 text-white rounded-xl px-3 py-2 text-xs font-bold">
+                  <UserPlus className="w-3.5 h-3.5" /> Ajouter
+                </button>
+              )}
+            </div>
+            <div className="bg-sky-50 rounded-2xl p-4 border border-sky-100">
+              <div className="text-xs text-sky-700 font-semibold">Total cotisé par mes bénéficiaires ({myBeneficiaries.length})</div>
+              <div className="font-black text-sky-900 text-xl">{myTotal.toLocaleString("fr-FR")} F</div>
             </div>
             {profilesLoading && <SkeletonList rows={4} />}
             {!profilesLoading && beneficiaries.length === 0 && (
@@ -2911,17 +3069,22 @@ function SupervisorSpace({ onLogout }: { onLogout: () => void }) {
             )}
             <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
               {beneficiaries.map((b) => (
-                <button key={b.uid} onClick={() => selectBeneficiary(b)}
-                  className="w-full px-4 py-3.5 flex items-center gap-3 border-b border-stone-50 last:border-0 text-left hover:bg-stone-50">
-                  <Avatar name={b.fullName} size="md" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-stone-900 text-sm">{b.fullName}</div>
-                    <div className="text-xs text-stone-500">{b.village}, {b.region} · {b.phone}</div>
-                  </div>
+                <div key={b.uid} className="w-full px-4 py-3.5 flex items-center gap-3 border-b border-stone-50 last:border-0">
+                  <button onClick={() => selectBeneficiary(b)} className="flex-1 min-w-0 flex items-center gap-3 text-left">
+                    <Avatar name={b.fullName} size="md" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-stone-900 text-sm">{b.fullName}</div>
+                      <div className="text-xs text-stone-500">{b.village}, {b.region} · {b.phone}</div>
+                    </div>
+                  </button>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
                     b.kycStatus === "pending" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
                   }`}>{b.kycStatus === "pending" ? "KYC en attente" : b.kycStatus}</span>
-                </button>
+                  <button onClick={() => setSelectedMemberUid(b.uid)}
+                    className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-400 flex-shrink-0" aria-label="Modifier">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -2964,8 +3127,12 @@ function SupervisorSpace({ onLogout }: { onLogout: () => void }) {
 
                 <WavePaymentBanner amount={amount} />
 
-                <ConfirmButton onConfirm={confirmCollection} label="J'ai vérifié la réception — Confirmer"
-                  className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600" />
+                {canCollect ? (
+                  <ConfirmButton onConfirm={confirmCollection} label="J'ai vérifié la réception — Confirmer"
+                    className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600" />
+                ) : (
+                  <div className="text-center text-xs text-stone-400 font-medium py-2">Droit "Collecter une cotisation" non accordé par l'admin.</div>
+                )}
               </>
             )}
           </div>
@@ -2975,10 +3142,12 @@ function SupervisorSpace({ onLogout }: { onLogout: () => void }) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-black text-stone-900">Groupes Bokanmin</h2>
-              <button onClick={() => setShowCreateGroup(true)}
-                className="flex items-center gap-1.5 bg-sky-600 text-white rounded-xl px-3 py-2 text-xs font-bold">
-                <Plus className="w-3.5 h-3.5" /> Créer
-              </button>
+              {canCreateGroup && (
+                <button onClick={() => setShowCreateGroup(true)}
+                  className="flex items-center gap-1.5 bg-sky-600 text-white rounded-xl px-3 py-2 text-xs font-bold">
+                  <Plus className="w-3.5 h-3.5" /> Créer
+                </button>
+              )}
             </div>
             {groups.length === 0 && (
               <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
@@ -2989,7 +3158,21 @@ function SupervisorSpace({ onLogout }: { onLogout: () => void }) {
             <div className="space-y-3">
               {groups.map((g) => (
                 <div key={g.id} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-                  <div className="font-bold text-stone-900 text-sm mb-1">{g.name}</div>
+                  <div className="flex items-start justify-between mb-1">
+                    <div className="font-bold text-stone-900 text-sm">{g.name}</div>
+                    <div className="flex items-center gap-1">
+                      {canEditGroup && (
+                        <button onClick={() => setEditingGroup(g)} className="p-1 rounded-lg hover:bg-stone-100 text-stone-400" aria-label="Modifier le groupe">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {canDeleteGroup && (
+                        <button onClick={() => deleteGroup(g.id)} className="p-1 rounded-lg hover:bg-red-50 text-red-400" aria-label="Supprimer le groupe">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <div className="text-xs text-stone-500 mb-2">{g.memberIds.length} membre{g.memberIds.length > 1 ? "s" : ""} · {g.contributionAmount.toLocaleString("fr-FR")} F / semaine</div>
                   <div className="flex flex-wrap gap-1.5">
                     {g.memberIds.map((uid) => (
@@ -3006,7 +3189,7 @@ function SupervisorSpace({ onLogout }: { onLogout: () => void }) {
       </main>
 
       {showAddBeneficiary && (
-        <AddBeneficiaryForm allowedRoles={["farmer"]} onClose={() => setShowAddBeneficiary(false)}
+        <AddBeneficiaryForm allowedRoles={["farmer"]} supervisorId={profile?.uid ?? null} onClose={() => setShowAddBeneficiary(false)}
           onDone={() => { setShowAddBeneficiary(false); refreshProfiles(); }} />
       )}
       {showCreateGroup && profile && (
@@ -3014,16 +3197,26 @@ function SupervisorSpace({ onLogout }: { onLogout: () => void }) {
           onClose={() => setShowCreateGroup(false)}
           onDone={() => { setShowCreateGroup(false); pushToast({ tone: "success", title: "Groupe créé !", message: "" }); }} />
       )}
+      {editingGroup && profile && (
+        <CreateGroupModal cooperativeId={profile.cooperativeId} beneficiaries={beneficiaries} existingGroup={editingGroup}
+          onClose={() => setEditingGroup(null)}
+          onDone={() => { setEditingGroup(null); pushToast({ tone: "success", title: "Groupe modifié !", message: "" }); }} />
+      )}
+      {selectedMemberUid && (
+        <MemberDetailPanel uid={selectedMemberUid} variant="supervisor" canEdit={canEditBeneficiary} canDeactivate={canDeactivateBeneficiary} canCollect={canCollect}
+          onClose={() => { setSelectedMemberUid(null); refreshProfiles(); }} />
+      )}
     </div>
   );
 }
 
-function CreateGroupModal({ cooperativeId, beneficiaries, onClose, onDone }: {
-  cooperativeId: string; beneficiaries: Profile[]; onClose: () => void; onDone: () => void;
+function CreateGroupModal({ cooperativeId, beneficiaries, existingGroup, onClose, onDone }: {
+  cooperativeId: string; beneficiaries: Profile[]; existingGroup?: SusuGroup; onClose: () => void; onDone: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [contributionAmount, setContributionAmount] = useState(WEEKLY_CONTRIBUTION);
-  const [memberIds, setMemberIds] = useState<string[]>([]);
+  useBackGuard(true, onClose);
+  const [name, setName] = useState(existingGroup?.name ?? "");
+  const [contributionAmount, setContributionAmount] = useState(existingGroup?.contributionAmount ?? WEEKLY_CONTRIBUTION);
+  const [memberIds, setMemberIds] = useState<string[]>(existingGroup?.memberIds ?? []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -3038,11 +3231,15 @@ function CreateGroupModal({ cooperativeId, beneficiaries, onClose, onDone }: {
     setSaving(true);
     setError("");
     try {
-      await createGroup({ name: name.trim(), cooperativeId, contributionAmount, memberIds });
+      if (existingGroup) {
+        await updateGroup(existingGroup.id, { name: name.trim(), contributionAmount, memberIds });
+      } else {
+        await createGroup({ name: name.trim(), cooperativeId, contributionAmount, memberIds });
+      }
       onDone();
     } catch (err) {
-      console.error("Erreur création groupe :", err);
-      setError("Impossible de créer le groupe. Réessayez.");
+      console.error("Erreur enregistrement groupe :", err);
+      setError("Impossible d'enregistrer le groupe. Réessayez.");
     } finally {
       setSaving(false);
     }
@@ -3052,7 +3249,7 @@ function CreateGroupModal({ cooperativeId, beneficiaries, onClose, onDone }: {
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
-          <div className="font-black text-stone-800">🤝 Nouveau groupe Bokanmin</div>
+          <div className="font-black text-stone-800">{existingGroup ? "✏️ Modifier le groupe" : "🤝 Nouveau groupe Bokanmin"}</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500">
             <X className="w-5 h-5" />
           </button>
@@ -3102,7 +3299,7 @@ function CreateGroupModal({ cooperativeId, beneficiaries, onClose, onDone }: {
           <button onClick={handleSubmit} disabled={!valid || saving}
             className="w-full py-4 rounded-2xl font-black text-white bg-sky-600 disabled:opacity-50 flex items-center justify-center gap-2">
             {saving ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-            Créer le groupe
+            {existingGroup ? "Enregistrer les modifications" : "Créer le groupe"}
           </button>
         </div>
       </div>
@@ -3147,6 +3344,7 @@ function Shell() {
   const bottomKey: PageKey = (bottomPages.has(page) ? page : "home") as PageKey;
   const navigate = (p: string) => { setPage(p as AllPages); setPageKey((k) => k + 1); };
   const goHome   = () => navigate("home");
+  useBackGuard(page !== "home", goHome);
 
   const render = () => {
     switch (page) {

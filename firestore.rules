@@ -10,6 +10,13 @@ rules_version = '2';
 // correspondant — cela nécessiterait une Cloud Function (plan Blaze) pour
 // une garantie bancaire complète. À prévoir avant un déploiement à grande
 // échelle avec de vrais fonds.
+//
+// Limite connue (2) : les droits fins par superviseur (`Profile.permissions` —
+// ex. "peut créer un bénéficiaire") ne sont PAS vérifiés ici, seulement côté
+// UI (masquage de boutons dans l'app). Ces règles ne garantissent que le rôle
+// ("agent"), pas la permission précise — un superviseur techniquement outillé
+// pourrait contourner l'UI. Une vraie séparation fine nécessiterait des
+// custom claims / Cloud Functions, hors budget de ce projet.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -23,7 +30,10 @@ service cloud.firestore {
     function isAgent() { return isSignedIn() && myRole() == "agent"; }
 
     match /profiles/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
+      // Lecture individuelle élargie aux profils "farmer" pour tout utilisateur connecté :
+      // permet à un investisseur de voir le nom d'un agriculteur dont il finance un bon
+      // (pas d'énumération globale — `allow list` reste réservé admin/agent ci-dessous).
+      allow read: if isOwner(uid) || isAdmin() || (isSignedIn() && resource.data.role == "farmer");
       allow list: if isAdmin() || isAgent();
       allow create: if request.resource.data.uid == uid
         && (
@@ -46,7 +56,10 @@ service cloud.firestore {
       allow update: if isAdmin()
         || ((isOwner(uid) || isAgent())
             && request.resource.data.balance >= resource.data.balance
-            && request.resource.data.balance - resource.data.balance <= 5000000);
+            && request.resource.data.balance - resource.data.balance <= 5000000)
+        // Exception : un investisseur peut diminuer SON PROPRE solde pour acheter un bon
+        // (marketplace de financement participatif) — jamais en dessous de 0.
+        || (isOwner(uid) && request.resource.data.balance >= 0 && request.resource.data.balance <= resource.data.balance);
     }
 
     match /parcels/{parcelId} {
@@ -57,6 +70,7 @@ service cloud.firestore {
 
     match /contributions/{id} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow list: if isAdmin() || isAgent(); // le superviseur additionne les cotisations de ses bénéficiaires (requête `in`)
       allow create: if isSignedIn()
         && (request.resource.data.userId == request.auth.uid || isAdmin() || isAgent())
         && request.resource.data.amount > 0
@@ -87,7 +101,13 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == "pending"
         && request.resource.data.approvedAmount == null;
-      allow update: if isAdmin(); // seule l'admin approuve, rejette ou décaisse
+      allow update: if isAdmin() // approuve, rejette ou décaisse
+        // marketplace de bons : un investisseur ne peut qu'augmenter investedAmount, jamais au-delà du montant approuvé
+        || (isSignedIn()
+            && resource.data.status in ["approved", "active"]
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["investedAmount"])
+            && request.resource.data.investedAmount > resource.data.investedAmount
+            && request.resource.data.investedAmount <= resource.data.approvedAmount);
     }
 
     match /transactions/{id} {
@@ -104,10 +124,16 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /bondInvestments/{id} {
+      allow read: if isAdmin() || (isSignedIn() && (resource.data.investorId == request.auth.uid || resource.data.farmerId == request.auth.uid));
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.investorId == request.auth.uid && request.resource.data.amount > 0;
+      allow update, delete: if false;
+    }
+
     match /susuGroups/{id} {
       allow read: if isSignedIn();
-      allow create, update: if isAdmin() || isAgent();
-      allow delete: if isAdmin();
+      allow create, update, delete: if isAdmin() || isAgent();
     }
 
     match /notifications/{id} {

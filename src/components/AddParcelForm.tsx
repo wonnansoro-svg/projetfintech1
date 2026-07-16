@@ -4,11 +4,13 @@ import { addParcel } from "../services/parcelService";
 import { getCurrentLocation, trackParcelBoundary, calculatePolygonArea, type GeoPoint } from "../lib/geolocation";
 import { vibrate } from "../lib/haptics";
 import { CROPS } from "../lib/crops";
+import { useBackGuard } from "../lib/backGuard";
 import type { Crop } from "../types/firestore";
 
 export default function AddParcelForm({ ownerId, onClose, onDone }: {
   ownerId: string; onClose: () => void; onDone: () => void;
 }) {
+  useBackGuard(true, onClose);
   const [name, setName] = useState("");
   const [crop, setCrop] = useState<Crop>("maize");
   const [hectares, setHectares] = useState<number | null>(null);

@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { X, Download, Loader, FileText } from "lucide-react";
 import { buildQrDataUrl, downloadDocumentPdf, type PdfDocumentData } from "../lib/pdf";
+import { useBackGuard } from "../lib/backGuard";
 
 export default function DocumentPreviewModal({ data, filename, onClose, onValidated }: {
   data: PdfDocumentData; filename: string; onClose: () => void; onValidated?: () => void;
 }) {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+
+  useBackGuard(true, onClose);
 
   useEffect(() => {
     if (!data.qrPayload) return;
