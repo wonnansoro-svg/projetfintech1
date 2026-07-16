@@ -3314,6 +3314,11 @@ function Shell() {
   const [page, setPage] = useState<AllPages>("home");
   const [pageKey, setPageKey] = useState(0);
   const [showOnboarding, setShowOnboarding] = useState(() => !hasSeenOnboarding());
+  const navigate = (p: string) => { setPage(p as AllPages); setPageKey((k) => k + 1); };
+  const goHome   = () => navigate("home");
+  // Appelé inconditionnellement (règle des Hooks) — no-op tant que page === "home"
+  // (donc no-op pour tous les rôles autres que farmer, qui n'utilisent jamais `page`).
+  useBackGuard(page !== "home", goHome);
 
   if (!user) return <LoginPage />;
 
@@ -3342,9 +3347,6 @@ function Shell() {
   // ── FARMER ──
   const bottomPages = new Set<string>(["home", "weather", "parcelles", "payments", "identity"]);
   const bottomKey: PageKey = (bottomPages.has(page) ? page : "home") as PageKey;
-  const navigate = (p: string) => { setPage(p as AllPages); setPageKey((k) => k + 1); };
-  const goHome   = () => navigate("home");
-  useBackGuard(page !== "home", goHome);
 
   const render = () => {
     switch (page) {
