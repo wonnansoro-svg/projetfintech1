@@ -4,10 +4,12 @@ import {
 import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { db, adminCreateAuth } from "../firebase";
 import { generateVerificationCode, generateTempPassword } from "../lib/qr";
+import { normalizePhone, looksLikeEmail, syntheticEmailForPhone } from "../lib/phoneAuth";
 import type { Crop, Profile, Role } from "../types/firestore";
 
 const PROFILES = "profiles";
 const WALLETS = "wallets";
+const PHONE_INDEX = "phoneIndex";
 
 export interface NewProfileInput {
   fullName: string;
@@ -58,7 +60,19 @@ async function writeProfileDocs(uid: string, input: NewProfileInput): Promise<Pr
   await setDoc(doc(db, WALLETS, uid), {
     uid, balance: 0, totalContributed: 0, contributionsLast12m: 0, updatedAt: now,
   });
+  const digits = normalizePhone(input.phone);
+  if (digits) await setDoc(doc(db, PHONE_INDEX, digits), { email: input.email });
   return profile;
+}
+
+/** Résout un identifiant de connexion (email ou téléphone) vers l'email Firebase Auth réel. */
+export async function resolveLoginEmail(identifier: string): Promise<string> {
+  if (looksLikeEmail(identifier)) return identifier;
+  const digits = normalizePhone(identifier);
+  if (!digits) throw new Error("Identifiant invalide.");
+  const snap = await getDoc(doc(db, PHONE_INDEX, digits));
+  if (!snap.exists()) throw new Error("Aucun compte associé à ce numéro de téléphone.");
+  return (snap.data() as { email: string }).email;
 }
 
 /** Crée le profil bénéficiaire (onboarding réel ou migration d'un compte Auth existant sans profil). */
@@ -79,9 +93,8 @@ export interface AdminCreatedAccount {
  * (`adminCreateAuth`) pour que la création du compte ne déconnecte pas l'admin.
  */
 export async function createProfileAsAdmin(input: Omit<NewProfileInput, "email">): Promise<AdminCreatedAccount> {
-  const digits = input.phone.replace(/\D/g, "");
-  if (!digits) throw new Error("Numéro de téléphone invalide.");
-  const email = `${digits}@coopavec.local`;
+  if (!normalizePhone(input.phone)) throw new Error("Numéro de téléphone invalide.");
+  const email = syntheticEmailForPhone(input.phone);
   const tempPassword = generateTempPassword();
 
   const cred = await createUserWithEmailAndPassword(adminCreateAuth, email, tempPassword);

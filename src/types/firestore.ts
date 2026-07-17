@@ -154,17 +154,25 @@ export interface Credit {
   requestedAt: number;
   decidedAt: number | null;
   decidedBy: string | null;
-  /** Montant déjà racheté par des investisseurs (marketplace de bons) — plafonné à approvedAmount. */
+  /** uid de l'admin qui a généré le bon. */
+  createdBy: string;
+  /** Montant total engagé par des investisseurs (payé, en attente ou déjà validé par l'admin) — plafonné à approvedAmount. */
   investedAmount: number;
+  /** Part déjà validée par l'admin et versée sur le solde du bénéficiaire — plafonné à approvedAmount. */
+  creditedAmount: number;
 }
 
-/** Investissement d'un investisseur dans un bon (Credit approuvé/actif d'un agriculteur). */
+export type BondInvestmentStatus = "pending" | "approved" | "rejected";
+
+/** Investissement d'un investisseur dans un bon (Credit approuvé d'un agriculteur), soumis à validation admin. */
 export interface BondInvestment {
   id: string;
   creditId: string;
   investorId: string;
   farmerId: string;
   amount: number;
+  status: BondInvestmentStatus;
+  reviewedBy: string | null;
   createdAt: number;
 }
 

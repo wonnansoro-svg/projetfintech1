@@ -1,6 +1,8 @@
 /** Traduit les codes d'erreur Firebase Auth en messages clairs pour l'utilisateur. */
 export function describeAuthError(err: unknown): string {
   const code = (err as { code?: string })?.code ?? "";
+  // Erreur applicative sans code Firebase (ex. résolution téléphone→email) : message déjà clair, on le garde tel quel.
+  if (!code && err instanceof Error) return err.message;
   switch (code) {
     case "auth/invalid-email":
       return "Adresse email invalide.";

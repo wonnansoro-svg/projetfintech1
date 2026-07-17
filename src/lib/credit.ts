@@ -42,27 +42,6 @@ export function computeFinancingScore(lossValueFcfa: number): number {
   return Math.max(0, Math.min(100, Math.floor(lossValueFcfa / 5000)));
 }
 
-export interface EligibilityInput {
-  contributionsCount: number;
-  ceiling: number;
-  settings: CreditSettings;
-}
-
-export interface EligibilityResult {
-  eligible: boolean;
-  reason: string | null;
-}
-
-export function isEligibleForCredit({ contributionsCount, ceiling, settings }: EligibilityInput): EligibilityResult {
-  if (contributionsCount < settings.minContributionsRequired) {
-    return { eligible: false, reason: `Il faut au moins ${settings.minContributionsRequired} cotisations confirmées pour devenir éligible.` };
-  }
-  if (ceiling < settings.minLoanAmount) {
-    return { eligible: false, reason: "Le plafond calculé est inférieur au montant minimum de crédit. Cotisez davantage pour augmenter votre plafond." };
-  }
-  return { eligible: true, reason: null };
-}
-
 /** Échéancier à intérêt simple, réparti à parts égales sur la durée du crédit. */
 export function buildRepaymentSchedule(approvedAmount: number, monthlyRate: number, termMonths: number, startDate = new Date()): RepaymentInstallment[] {
   const total = approvedAmount * (1 + monthlyRate * termMonths);

@@ -16,16 +16,18 @@ import BeneficiaryOnboardingForm from "./components/BeneficiaryOnboardingForm";
 import AddParcelForm from "./components/AddParcelForm";
 import IdentityQRCode from "./components/IdentityQRCode";
 import { getCurrentLocation, type GeoPoint } from "./lib/geolocation";
-import { subscribeToGuaranteeFund, subscribeToCreditSettings } from "./services/fundService";
+import { subscribeToGuaranteeFund, subscribeToCreditSettings, getGuaranteeFund, getCreditSettings } from "./services/fundService";
 import { recordContribution, computeWeeklyStreak, getContributionSplitTotals, getContributionsTotalForUsers } from "./services/contributionService";
-import { subscribeToWallet } from "./services/walletService";
+import { subscribeToWallet, getWallet } from "./services/walletService";
 import {
-  requestCredit, subscribeToUserCredits, subscribeToPendingCredits,
-  approveCredit, rejectCredit, countActiveCredits,
+  subscribeToUserCredits, subscribeToPendingCredits, countActiveCredits,
+  createBondForFarmer, approveBondByBeneficiary, rejectBondByBeneficiary,
   subscribeToInvestableBonds, subscribeToInvestorBonds, investInBond, getCredit,
+  subscribeToPendingBondInvestments, reviewBondInvestment,
 } from "./services/creditService";
 import { computeCreditCeiling, computeFinancingScore } from "./lib/credit";
-import { listProfiles, updateProfile, getProfile } from "./services/profileService";
+import { listProfiles, updateProfile, getProfile, resolveLoginEmail } from "./services/profileService";
+import { looksLikeEmail, syntheticEmailForPhone } from "./lib/phoneAuth";
 import { createGroup, updateGroup, deleteGroup, subscribeToGroupsByCooperative } from "./services/groupService";
 import { hasPermission } from "./lib/permissions";
 import { uploadKycPhoto, uploadLossPhoto } from "./services/storageService";
@@ -152,7 +154,7 @@ function Toast() {
 // ==================== LOGIN PAGE ====================
 
 function LoginPage() {
-  const [email, setEmail]       = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [isLogin, setIsLogin]   = useState(true);
   const [showPwd, setShowPwd]   = useState(false);
@@ -166,8 +168,13 @@ function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      if (isLogin) await login(email, password);
-      else         await signup(email, password);
+      if (isLogin) {
+        const email = await resolveLoginEmail(identifier);
+        await login(email, password);
+      } else {
+        const email = looksLikeEmail(identifier) ? identifier : syntheticEmailForPhone(identifier);
+        await signup(email, password);
+      }
     } catch (err) {
       setError(describeAuthError(err));
     } finally {
@@ -214,12 +221,12 @@ function LoginPage() {
           )}
 
           <div>
-            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Email</label>
+            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Email ou téléphone</label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              <input type="text" value={identifier} onChange={e => setIdentifier(e.target.value)}
                 className="w-full pl-9 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-sm"
-                placeholder="contact@exemple.com" required />
+                placeholder="contact@exemple.com ou 07 00 00 00 00" required />
             </div>
           </div>
           <div>
@@ -799,8 +806,8 @@ function SusuPage() {
 function CreditPage() {
   const { pushToast } = useApp();
   const { user, profile } = useAuth();
-  const [request, setRequest] = useState(25000);
-  const [tab, setTab] = useState<"credit" | "invest" | "remboursement">("credit");
+  const [tab, setTab] = useState<"mesbons" | "remboursement">("mesbons");
+  const [decidingId, setDecidingId] = useState<string | null>(null);
   const [fund, setFund] = useState<GuaranteeFund | null>(null);
   const [settings, setSettings] = useState<CreditSettings | null>(null);
   const [contribution12m, setContribution12m] = useState(0);
@@ -842,15 +849,24 @@ function CreditPage() {
   })();
 
   const latestCredit = credits[0] ?? null;
+  const pendingBonds = credits.filter((c) => c.status === "pending");
 
-  const submitRequest = async () => {
+  const decideBond = async (creditId: string, action: "approve" | "reject") => {
     if (!user) return;
+    setDecidingId(creditId);
     try {
-      await requestCredit(user.id, request);
-      pushToast({ tone: "success", title: "Demande envoyée", message: "En attente de validation par la coopérative." });
-    } catch (err: any) {
-      pushToast({ tone: "warn", title: "Demande refusée", message: err?.message ?? "Réessayez plus tard." });
-      throw err;
+      if (action === "approve") {
+        await approveBondByBeneficiary(creditId, user.id);
+        pushToast({ tone: "success", title: "Bon approuvé !", message: "Il est maintenant visible par les investisseurs." });
+      } else {
+        await rejectBondByBeneficiary(creditId, user.id, "Refusé par le bénéficiaire.");
+        pushToast({ tone: "info", title: "Bon refusé", message: "" });
+      }
+    } catch (err) {
+      console.error("Erreur décision bon :", err);
+      pushToast({ tone: "warn", title: "Échec", message: "Réessayez, vérifiez votre connexion." });
+    } finally {
+      setDecidingId(null);
     }
   };
 
@@ -871,35 +887,62 @@ function CreditPage() {
       </div>
 
       <div className="flex gap-2 mb-4">
-        {(["credit", "remboursement", "invest"] as const).map(t => (
+        {(["mesbons", "remboursement"] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
               tab === t ? "bg-violet-600 text-white shadow" : "bg-white border border-stone-200 text-stone-600"
             }`}>
-            {t === "credit" ? "💳 Bon de financement" : t === "remboursement" ? "📆 Remboursement" : "🌱 Investisseurs"}
+            {t === "mesbons" ? "💳 Mes bons" : "📆 Remboursement"}
           </button>
         ))}
       </div>
 
-      {tab === "credit" && (
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-200">
-          <div className="font-black text-stone-900 mb-3">➕ Demander un bon de financement participatif</div>
-          <div className="grid grid-cols-4 gap-2 mb-3">
-            {[10000, 25000, 50000, 100000].map((v) => (
-              <button key={v} onClick={() => setRequest(v)} className={`py-2.5 rounded-xl text-xs font-black transition-all ${
-                request === v ? "bg-gradient-to-br from-violet-600 to-purple-600 text-white shadow-md scale-105" : "bg-stone-100 text-stone-700"
-              }`}>{v / 1000}k</button>
-            ))}
-          </div>
-          <div className="bg-violet-50 rounded-xl p-3 mb-3 text-center border border-violet-100">
-            <Money value={request} size="md" />
-          </div>
-          <p className="text-xs text-stone-500 mb-3 flex items-start gap-2">
-            <span>Le montant réellement accordé dépendra de vos cotisations et de l'état du fonds de garantie au moment de la validation par la coopérative — la demande n'est pas accordée instantanément.</span>
-            <SpeakButton text="Le montant réellement accordé dépendra de vos cotisations et de l'état du fonds de garantie au moment de la validation par la coopérative. La demande n'est pas accordée instantanément." />
-          </p>
-          <ConfirmButton onConfirm={submitRequest} label="Soumettre la demande" successLabel="✓ Demande envoyée !"
-            className="w-full py-4 rounded-2xl font-black text-white bg-gradient-to-br from-violet-600 to-purple-600" />
+      {tab === "mesbons" && (
+        <div className="space-y-3">
+          {pendingBonds.length === 0 && credits.length === 0 && (
+            <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+              <CreditCard className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+              <div className="text-sm text-stone-500 font-medium">Aucun bon proposé par la coopérative pour l'instant</div>
+            </div>
+          )}
+          {credits.map((c) => (
+            <div key={c.id} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="font-black text-stone-900">{(c.approvedAmount ?? 0).toLocaleString("fr-FR")} F</div>
+                <span className={`text-xs font-black rounded-full px-3 py-1 ${
+                  c.status === "active" ? "bg-emerald-100 text-emerald-700" :
+                  c.status === "approved" ? "bg-sky-100 text-sky-700" :
+                  c.status === "pending" ? "bg-amber-100 text-amber-700" :
+                  c.status === "rejected" ? "bg-red-100 text-red-700" : "bg-stone-100 text-stone-600"
+                }`}>{c.status}</span>
+              </div>
+              {c.status === "pending" && (
+                <>
+                  <p className="text-xs text-stone-500">La coopérative vous propose ce bon — approuvez-le pour qu'il devienne visible aux investisseurs, ou refusez-le.</p>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={() => decideBond(c.id, "reject")} disabled={decidingId === c.id}
+                      className="flex-1 py-2.5 bg-red-50 text-red-600 rounded-xl font-bold text-xs disabled:opacity-50">Refuser</button>
+                    <button onClick={() => decideBond(c.id, "approve")} disabled={decidingId === c.id}
+                      className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs disabled:opacity-50">Approuver</button>
+                  </div>
+                </>
+              )}
+              {(c.status === "approved" || c.status === "active") && (
+                <div>
+                  <div className="flex justify-between text-xs text-stone-400 mb-1">
+                    <span>{c.creditedAmount.toLocaleString("fr-FR")} F versés</span>
+                    <span>{c.investedAmount.toLocaleString("fr-FR")} F engagés / {(c.approvedAmount ?? 0).toLocaleString("fr-FR")} F</span>
+                  </div>
+                  <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-emerald-400 to-sky-500 rounded-full" style={{ width: `${Math.round((c.creditedAmount / (c.approvedAmount || 1)) * 100)}%` }} />
+                  </div>
+                </div>
+              )}
+              {c.status === "rejected" && c.rejectionReason && (
+                <div className="text-xs text-red-600">{c.rejectionReason}</div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -908,7 +951,7 @@ function CreditPage() {
           {!latestCredit && (
             <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
               <CreditCard className="w-8 h-8 text-stone-300 mx-auto mb-2" />
-              <div className="text-sm text-stone-500 font-medium">Aucune demande de bon de financement</div>
+              <div className="text-sm text-stone-500 font-medium">Aucun bon de financement pour l'instant</div>
             </div>
           )}
           {latestCredit && (
@@ -950,30 +993,6 @@ function CreditPage() {
         </div>
       )}
 
-      {tab === "invest" && (
-        <div className="space-y-3">
-          {[
-            { name: "Projet Anacarde Hambol", target: 500000, raised: 310000, investors: 12, return: "12%" },
-            { name: "Irrigation Maïs Bouaké",  target: 200000, raised: 180000, investors: 8,  return: "10%" },
-          ].map((proj, i) => (
-            <div key={i} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-              <div className="font-black text-stone-800 mb-1">{proj.name}</div>
-              <div className="flex gap-4 text-xs text-stone-500 mb-2">
-                <span>👥 {proj.investors} investisseurs</span>
-                <span>📈 Rendement {proj.return}</span>
-              </div>
-              <div className="h-2 bg-stone-100 rounded-full mb-1 overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-lime-400 to-emerald-500 rounded-full" style={{ width: `${Math.round(proj.raised / proj.target * 100)}%` }} />
-              </div>
-              <div className="flex justify-between text-xs font-semibold text-stone-600">
-                <span>{proj.raised.toLocaleString("fr-FR")} F</span>
-                <span>sur {proj.target.toLocaleString("fr-FR")} F</span>
-              </div>
-              <button className="mt-3 w-full py-2.5 bg-lime-600 text-white rounded-xl font-bold text-sm">Investir</button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -2237,11 +2256,13 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
   const [fund, setFund] = useState<GuaranteeFund | null>(null);
   const [activeCreditsCount, setActiveCreditsCount] = useState(0);
   const [pendingCredits, setPendingCredits] = useState<Credit[]>([]);
+  const [pendingInvestments, setPendingInvestments] = useState<BondInvestment[]>([]);
   const [recentTxs, setRecentTxs] = useState<Transaction[]>([]);
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [profilesLoading, setProfilesLoading] = useState(true);
   const [txsLoading, setTxsLoading] = useState(true);
   const [showAddMember, setShowAddMember] = useState(false);
+  const [showGenerateBond, setShowGenerateBond] = useState(false);
   const [selectedMemberUid, setSelectedMemberUid] = useState<string | null>(null);
   const [splitTotals, setSplitTotals] = useState({ insurance: 0, managementFee: 0 });
 
@@ -2249,7 +2270,8 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
   useEffect(refreshProfiles, []);
   useEffect(() => { const u = subscribeToGuaranteeFund(setFund); return () => u(); }, []);
   useEffect(() => { const u = subscribeToPendingCredits(setPendingCredits); return () => u(); }, []);
-  useEffect(() => { countActiveCredits().then(setActiveCreditsCount); }, [pendingCredits]);
+  useEffect(() => { const u = subscribeToPendingBondInvestments(setPendingInvestments); return () => u(); }, []);
+  useEffect(() => { countActiveCredits().then(setActiveCreditsCount); }, [pendingInvestments]);
   useEffect(() => { listRecentTransactions(8).then((t) => { setRecentTxs(t); setTxsLoading(false); }); }, []);
   useEffect(() => { getContributionSplitTotals().then(setSplitTotals); }, []);
 
@@ -2264,14 +2286,13 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
     { label: "Total cotisations — frais de gestion", val: `${splitTotals.managementFee.toLocaleString("fr-FR")} F`, icon: Banknote },
   ];
 
-  const decide = async (creditId: string, action: "approve" | "reject") => {
+  const reviewInvestment = async (investmentId: string, action: "approve" | "reject") => {
     if (!user) return;
-    setDecidingId(creditId);
+    setDecidingId(investmentId);
     try {
-      if (action === "approve") await approveCredit(creditId, user.id);
-      else await rejectCredit(creditId, user.id, "Rejeté par la coopérative.");
+      await reviewBondInvestment(investmentId, user.id, action);
     } catch (err) {
-      console.error("Erreur décision crédit :", err);
+      console.error("Erreur revue investissement :", err);
     } finally {
       setDecidingId(null);
     }
@@ -2424,35 +2445,57 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
 
         {/* ── BONS DE FINANCEMENT ── */}
         {tab === "credits" && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-black text-stone-900">Demandes de bon de financement en attente</h2>
-            {pendingCredits.length === 0 && (
-              <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
-                <CreditCard className="w-8 h-8 text-stone-300 mx-auto mb-2" />
-                <div className="text-sm text-stone-500 font-medium">Aucune demande en attente</div>
-              </div>
-            )}
-            {pendingCredits.map((c) => (
-              <div key={c.id} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm space-y-2">
-                <div className="flex items-center gap-3">
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-black text-stone-900">Bons de financement</h2>
+              <button onClick={() => setShowGenerateBond(true)}
+                className="flex items-center gap-1.5 bg-violet-600 text-white rounded-xl px-3 py-2 text-xs font-bold">
+                <Plus className="w-3.5 h-3.5" /> Générer un bon
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-black text-stone-700">Paiements investisseurs en attente de validation</h3>
+              {pendingInvestments.length === 0 && (
+                <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+                  <CreditCard className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                  <div className="text-sm text-stone-500 font-medium">Aucun paiement en attente</div>
+                </div>
+              )}
+              {pendingInvestments.map((inv) => (
+                <div key={inv.id} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm space-y-2">
+                  <div className="text-xs text-stone-500">
+                    <span className="font-bold text-stone-800">{nameByUid.get(inv.investorId) ?? inv.investorId}</span> → <span className="font-bold text-stone-800">{nameByUid.get(inv.farmerId) ?? inv.farmerId}</span>
+                  </div>
+                  <div className="font-black text-stone-900 text-lg">{inv.amount.toLocaleString("fr-FR")} F</div>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={() => reviewInvestment(inv.id, "reject")} disabled={decidingId === inv.id}
+                      className="flex-1 py-2.5 bg-red-50 text-red-600 rounded-xl font-bold text-xs disabled:opacity-50">Rejeter</button>
+                    <button onClick={() => reviewInvestment(inv.id, "approve")} disabled={decidingId === inv.id}
+                      className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs disabled:opacity-50">Approuver & créditer</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-black text-stone-700">Bons en attente d'approbation du bénéficiaire</h3>
+              {pendingCredits.length === 0 && (
+                <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+                  <div className="text-sm text-stone-500 font-medium">Aucun bon en attente</div>
+                </div>
+              )}
+              {pendingCredits.map((c) => (
+                <div key={c.id} className="bg-white rounded-2xl p-3.5 border border-stone-200 shadow-sm flex items-center gap-3">
                   <Avatar name={nameByUid.get(c.userId) ?? "?"} size="sm" />
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-stone-900 text-sm">{nameByUid.get(c.userId) ?? c.userId}</div>
-                    <div className="text-xs text-stone-500">Demandé le {new Date(c.requestedAt).toLocaleDateString("fr-FR")}</div>
+                    <div className="text-xs text-stone-500">Généré le {new Date(c.requestedAt).toLocaleDateString("fr-FR")}</div>
                   </div>
+                  <div className="font-black text-stone-800 text-sm flex-shrink-0">{(c.approvedAmount ?? 0).toLocaleString("fr-FR")} F</div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-center">
-                  <div className="bg-stone-50 rounded-xl p-2 border border-stone-200"><div className="text-[10px] text-stone-500">Demandé</div><div className="font-bold text-stone-800 text-sm">{c.requestedAmount.toLocaleString("fr-FR")} F</div></div>
-                  <div className="bg-violet-50 rounded-xl p-2 border border-violet-100"><div className="text-[10px] text-violet-600">Plafond calculé</div><div className="font-bold text-violet-700 text-sm">{(c.calculationSnapshot?.ceiling ?? 0).toLocaleString("fr-FR")} F</div></div>
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <button onClick={() => decide(c.id, "reject")} disabled={decidingId === c.id}
-                    className="flex-1 py-2.5 bg-red-50 text-red-600 rounded-xl font-bold text-xs disabled:opacity-50">Rejeter</button>
-                  <button onClick={() => decide(c.id, "approve")} disabled={decidingId === c.id}
-                    className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs disabled:opacity-50">Approuver & décaisser</button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
@@ -2532,6 +2575,98 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
       {selectedMemberUid && (
         <MemberDetailPanel uid={selectedMemberUid} allProfiles={profiles} onClose={() => { setSelectedMemberUid(null); refreshProfiles(); }} />
       )}
+      {showGenerateBond && user && (
+        <GenerateBondModal adminId={user.id} farmers={profiles.filter((p) => p.role === "farmer")}
+          onClose={() => setShowGenerateBond(false)} onDone={() => setShowGenerateBond(false)} />
+      )}
+    </div>
+  );
+}
+
+function GenerateBondModal({ adminId, farmers, onClose, onDone }: {
+  adminId: string; farmers: Profile[]; onClose: () => void; onDone: () => void;
+}) {
+  useBackGuard(true, onClose);
+  const [farmerId, setFarmerId] = useState("");
+  const [amount, setAmount] = useState(25000);
+  const [ceilingHint, setCeilingHint] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!farmerId) { setCeilingHint(null); return; }
+    let cancelled = false;
+    (async () => {
+      const [wallet, profile, fund, settings, lossValue] = await Promise.all([
+        getWallet(farmerId), getProfile(farmerId), getGuaranteeFund(), getCreditSettings(), getUserLossValueFcfa(farmerId),
+      ]);
+      if (cancelled || !profile) return;
+      const financingScore = computeFinancingScore(lossValue);
+      const { ceiling } = computeCreditCeiling({ personalContribution12m: wallet?.contributionsLast12m ?? 0, fund, settings, kycStatus: profile.kycStatus, financingScore });
+      setCeilingHint(ceiling);
+    })();
+    return () => { cancelled = true; };
+  }, [farmerId]);
+
+  const valid = farmerId.length > 0 && amount > 0;
+
+  const handleSubmit = async () => {
+    if (!valid) return;
+    setSaving(true);
+    setError("");
+    try {
+      await createBondForFarmer(adminId, farmerId, amount);
+      onDone();
+    } catch (err) {
+      console.error("Erreur génération bon :", err);
+      setError("Impossible de générer le bon. Réessayez.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
+          <div className="font-black text-stone-800">💳 Générer un bon de financement</div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {error && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-xl flex items-center gap-2 text-sm">
+              <AlertCircle className="w-4 h-4 shrink-0" /><p>{error}</p>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Bénéficiaire</label>
+            <select value={farmerId} onChange={(e) => setFarmerId(e.target.value)}
+              className="w-full px-3 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm font-semibold text-stone-700 outline-none focus:ring-2 focus:ring-violet-400">
+              <option value="">— Sélectionner —</option>
+              {farmers.map((f) => <option key={f.uid} value={f.uid}>{f.fullName}</option>)}
+            </select>
+            {ceilingHint !== null && (
+              <div className="text-xs text-violet-600 mt-1.5">💡 Plafond estimé pour ce bénéficiaire : {ceilingHint.toLocaleString("fr-FR")} F (indicatif, non bloquant)</div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Montant du bon (F)</label>
+            <input type="number" min={0} step={1000} value={amount} onChange={(e) => setAmount(Number(e.target.value))}
+              className="w-full px-3 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-violet-500 outline-none text-sm" />
+          </div>
+
+          <button onClick={handleSubmit} disabled={!valid || saving}
+            className="w-full py-4 rounded-2xl font-black text-white bg-gradient-to-br from-violet-600 to-purple-600 disabled:opacity-50 flex items-center justify-center gap-2">
+            {saving ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            Générer le bon
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -7,25 +7,25 @@ const CONTRIBUTIONS = "contributions";
 const WALLETS = "wallets";
 const TRANSACTIONS = "transactions";
 
-/** Répartition de la cotisation Bokanmin : 800 F/1500 F assurance, 700 F/1500 F frais de gestion. */
-const INSURANCE_RATIO = 800 / 1500;
+/** Frais de gestion fixe par cotisation Bokanmin, quel que soit le montant — incite à anticiper/regrouper les cotisations plutôt que grignoter par petits montants. */
+const MANAGEMENT_FEE_FLAT = 800;
 
 /**
  * Enregistre une cotisation réelle et met à jour, dans la même transaction
  * Firestore, le portefeuille du bénéficiaire ET le fonds de garantie
  * collectif (l'argent déposé qui sert d'assurance pour les crédits agricoles).
  *
- * Pour les cotisations Bokanmin (`kind === "guarantee_fund"`), le montant est
- * réparti en une part assurance (alimente le fonds de garantie, prêtable) et
- * une part frais de gestion (revenu de fonctionnement de la coopérative, ne
- * rejoint jamais le fonds prêtable). Le bénéficiaire ne voit que son montant
- * total cotisé ; seul l'admin voit la répartition (`getContributionSplitTotals`).
+ * Pour les cotisations Bokanmin (`kind === "guarantee_fund"`), 800 F fixes
+ * sont prélevés comme frais de gestion (revenu de fonctionnement de la
+ * coopérative, ne rejoint jamais le fonds prêtable) ; le reste alimente le
+ * fonds de garantie. Le bénéficiaire ne voit que son montant total cotisé ;
+ * seul l'admin voit la répartition (`getContributionSplitTotals`).
  */
 export async function recordContribution(userId: string, amount: number, kind: ContributionKind = "susu", label?: string): Promise<void> {
   if (amount <= 0) throw new Error("Le montant de la cotisation doit être positif.");
 
-  const insurancePart = kind === "guarantee_fund" ? Math.round(amount * INSURANCE_RATIO) : amount;
-  const managementFeePart = amount - insurancePart;
+  const managementFeePart = kind === "guarantee_fund" ? Math.min(MANAGEMENT_FEE_FLAT, amount) : 0;
+  const insurancePart = amount - managementFeePart;
 
   const walletRef = doc(db, WALLETS, userId);
   const contributionRef = doc(collection(db, CONTRIBUTIONS));

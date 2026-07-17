@@ -97,14 +97,20 @@ service cloud.firestore {
     match /credits/{id} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow list: if isAdmin() || isSignedIn();
-      allow create: if isSignedIn()
-        && request.resource.data.userId == request.auth.uid
+      // Seul l'admin génère un bon (le fermier ne demande plus lui-même).
+      allow create: if isAdmin()
         && request.resource.data.status == "pending"
-        && request.resource.data.approvedAmount == null;
-      allow update: if isAdmin() // approuve, rejette ou décaisse
-        // marketplace de bons : un investisseur ne peut qu'augmenter investedAmount, jamais au-delà du montant approuvé
+        && request.resource.data.investedAmount == 0
+        && request.resource.data.creditedAmount == 0;
+      allow update: if isAdmin() // valide un paiement investisseur (creditedAmount, passage à "active"), etc.
+        // le bénéficiaire approuve/refuse son propre bon en attente
         || (isSignedIn()
-            && resource.data.status in ["approved", "active"]
+            && resource.data.userId == request.auth.uid
+            && resource.data.status == "pending"
+            && request.resource.data.status in ["approved", "rejected"])
+        // marketplace de bons : un investisseur ne peut qu'augmenter investedAmount sur un bon approuvé, jamais au-delà du montant approuvé
+        || (isSignedIn()
+            && resource.data.status == "approved"
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["investedAmount"])
             && request.resource.data.investedAmount > resource.data.investedAmount
             && request.resource.data.investedAmount <= resource.data.approvedAmount);
@@ -127,8 +133,24 @@ service cloud.firestore {
     match /bondInvestments/{id} {
       allow read: if isAdmin() || (isSignedIn() && (resource.data.investorId == request.auth.uid || resource.data.farmerId == request.auth.uid));
       allow list: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.investorId == request.auth.uid && request.resource.data.amount > 0;
-      allow update, delete: if false;
+      allow create: if isSignedIn()
+        && request.resource.data.investorId == request.auth.uid
+        && request.resource.data.amount > 0
+        && request.resource.data.status == "pending";
+      // Seul l'admin valide (approuve/rejette) un paiement en attente.
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /phoneIndex/{phone} {
+      // Lecture par clé connue uniquement (nécessaire avant authentification pour résoudre
+      // téléphone → email) — pas de `list`, donc pas d'énumération possible des numéros.
+      allow get: if true;
+      allow list: if false;
+      // Auto-inscription : l'email inscrit doit être celui du compte qui vient d'être créé.
+      // Création d'un compte pour un tiers (bénéficiaire sans email personnel) par un admin ou un superviseur.
+      allow create, update: if isSignedIn() && (request.resource.data.email == request.auth.token.email || isAdmin() || isAgent());
+      allow delete: if isAdmin();
     }
 
     match /susuGroups/{id} {
