@@ -211,3 +211,13 @@ export interface AppNotification {
   read: boolean;
   createdAt: number;
 }
+
+/** Document unique `settings/cooperative` — informations de la coopérative éditables par l'admin. */
+export interface CooperativeInfo {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  region: string;
+  updatedAt: number;
+}

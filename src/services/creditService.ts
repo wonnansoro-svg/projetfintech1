@@ -1,5 +1,5 @@
 import {
-  collection, doc, getCountFromServer, getDoc, onSnapshot, orderBy, query, runTransaction, setDoc, where,
+  collection, doc, getCountFromServer, getDoc, getDocs, onSnapshot, orderBy, query, runTransaction, setDoc, where,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { getProfile } from "./profileService";
@@ -100,6 +100,12 @@ export async function countActiveCredits(): Promise<number> {
   const q = query(collection(db, CREDITS), where("status", "==", "active"));
   const snap = await getCountFromServer(q);
   return snap.data().count;
+}
+
+/** Tous les bons de financement — réservé à l'espace admin (rapports). */
+export async function listAllCredits(): Promise<Credit[]> {
+  const snap = await getDocs(collection(db, CREDITS));
+  return snap.docs.map((d) => d.data() as Credit);
 }
 
 /** Bons disponibles à l'investissement : approuvés par le bénéficiaire, pas encore intégralement financés. */

@@ -23,17 +23,19 @@ import {
   subscribeToUserCredits, subscribeToPendingCredits, countActiveCredits,
   createBondForFarmer, approveBondByBeneficiary, rejectBondByBeneficiary,
   subscribeToInvestableBonds, subscribeToInvestorBonds, investInBond, getCredit,
-  subscribeToPendingBondInvestments, reviewBondInvestment,
+  subscribeToPendingBondInvestments, reviewBondInvestment, listAllCredits,
 } from "./services/creditService";
+import { subscribeToCooperativeInfo, updateCooperativeInfo } from "./services/cooperativeService";
 import { computeCreditCeiling, computeFinancingScore } from "./lib/credit";
 import { listProfiles, updateProfile, getProfile, resolveLoginEmail } from "./services/profileService";
 import { looksLikeEmail, syntheticEmailForPhone } from "./lib/phoneAuth";
 import { createGroup, updateGroup, deleteGroup, subscribeToGroupsByCooperative } from "./services/groupService";
-import { hasPermission } from "./lib/permissions";
+import { hasPermission, SUPERVISOR_PERMISSION_GROUPS } from "./lib/permissions";
 import { uploadKycPhoto, uploadLossPhoto } from "./services/storageService";
 import { submitLossClaim, getUserLossValueFcfa } from "./services/lossService";
 import DocumentPreviewModal from "./components/DocumentPreviewModal";
 import type { PdfDocumentData } from "./lib/pdf";
+import { downloadTablePdf } from "./lib/pdf";
 import { buildIdentityPayload } from "./lib/qr";
 import { vibrate } from "./lib/haptics";
 import ConfirmButton from "./components/ConfirmButton";
@@ -43,7 +45,7 @@ import WavePaymentBanner from "./components/WavePaymentBanner";
 import OnboardingTour, { hasSeenOnboarding } from "./components/OnboardingTour";
 import { describeAuthError } from "./lib/authErrors";
 import { subscribeToNotifications, markAllRead } from "./services/notificationService";
-import type { AppNotification } from "./types/firestore";
+import type { AppNotification, CooperativeInfo } from "./types/firestore";
 import AddBeneficiaryForm from "./components/AddBeneficiaryForm";
 import MemberDetailPanel from "./components/MemberDetailPanel";
 import { listRecentTransactions } from "./services/transactionService";
@@ -2265,6 +2267,10 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
   const [showGenerateBond, setShowGenerateBond] = useState(false);
   const [selectedMemberUid, setSelectedMemberUid] = useState<string | null>(null);
   const [splitTotals, setSplitTotals] = useState({ insurance: 0, managementFee: 0 });
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showSecurityPanel, setShowSecurityPanel] = useState(false);
+  const [showReportsPanel, setShowReportsPanel] = useState(false);
+  const [showCooperativePanel, setShowCooperativePanel] = useState(false);
 
   const refreshProfiles = () => { listProfiles().then((p) => { setProfiles(p); setProfilesLoading(false); }); };
   useEffect(refreshProfiles, []);
@@ -2538,14 +2544,15 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
             <h2 className="text-lg font-black text-stone-900">Paramètres</h2>
             <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
               {[
-                { icon: Bell,       label: "Notifications",    desc: "Alertes système"         },
-                { icon: Shield,     label: "Sécurité & accès", desc: "Rôles et permissions"    },
-                { icon: FileText,   label: "Rapports",         desc: "Générer des exports"     },
-                { icon: Building2,  label: "Coopérative",      desc: "Informations structure"  },
+                { icon: Bell,       label: "Notifications",    desc: "Alertes système",        onClick: () => setShowNotifications(true) },
+                { icon: Shield,     label: "Sécurité & accès", desc: "Rôles et permissions",    onClick: () => setShowSecurityPanel(true) },
+                { icon: FileText,   label: "Rapports",         desc: "Générer des exports",     onClick: () => setShowReportsPanel(true) },
+                { icon: Building2,  label: "Coopérative",      desc: "Informations structure",  onClick: () => setShowCooperativePanel(true) },
               ].map((it, i) => {
                 const Icon = it.icon;
                 return (
-                  <div key={i} className="flex items-center gap-3 px-4 py-4 border-b border-stone-50 last:border-0 hover:bg-stone-50 cursor-pointer">
+                  <button key={i} type="button" onClick={it.onClick}
+                    className="w-full flex items-center gap-3 px-4 py-4 border-b border-stone-50 last:border-0 hover:bg-stone-50 text-left">
                     <div className="w-9 h-9 bg-violet-50 rounded-xl flex items-center justify-center">
                       <Icon className="w-4 h-4 text-violet-600" />
                     </div>
@@ -2554,7 +2561,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
                       <div className="text-xs text-stone-500">{it.desc}</div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-stone-300" />
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -2578,6 +2585,22 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
       {showGenerateBond && user && (
         <GenerateBondModal adminId={user.id} farmers={profiles.filter((p) => p.role === "farmer")}
           onClose={() => setShowGenerateBond(false)} onDone={() => setShowGenerateBond(false)} />
+      )}
+      {showNotifications && (
+        <AdminNotificationsPanel pendingInvestmentsCount={pendingInvestments.length} pendingBondsCount={pendingCredits.length}
+          onClose={() => setShowNotifications(false)} />
+      )}
+      {showSecurityPanel && (
+        <SecurityAccessPanel supervisors={profiles.filter((p) => p.role === "agent")}
+          onSelect={(uid) => { setShowSecurityPanel(false); setSelectedMemberUid(uid); }}
+          onClose={() => setShowSecurityPanel(false)} />
+      )}
+      {showReportsPanel && (
+        <ReportsPanel profiles={profiles} nameByUid={nameByUid} fund={fund} splitTotals={splitTotals}
+          onClose={() => setShowReportsPanel(false)} />
+      )}
+      {showCooperativePanel && (
+        <CooperativeInfoPanel onClose={() => setShowCooperativePanel(false)} />
       )}
     </div>
   );
@@ -2666,6 +2689,246 @@ function GenerateBondModal({ adminId, farmers, onClose, onDone }: {
             Générer le bon
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminNotificationsPanel({ pendingInvestmentsCount, pendingBondsCount, onClose }: {
+  pendingInvestmentsCount: number; pendingBondsCount: number; onClose: () => void;
+}) {
+  useBackGuard(true, onClose);
+  const { user } = useAuth();
+  const [notifs, setNotifs] = useState<AppNotification[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    const u = subscribeToNotifications(user.id, setNotifs);
+    return () => u();
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (user && notifs.some((n) => !n.read)) markAllRead(user.id);
+  }, [user?.id, notifs.length]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
+          <div className="font-black text-stone-800 flex items-center gap-2"><Bell className="w-5 h-5 text-violet-600" /> Notifications</div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-amber-50 rounded-xl p-3 border border-amber-100 text-center">
+              <div className="text-xl font-black text-amber-700">{pendingInvestmentsCount}</div>
+              <div className="text-[10px] text-amber-600 font-semibold">Paiements à valider</div>
+            </div>
+            <div className="bg-sky-50 rounded-xl p-3 border border-sky-100 text-center">
+              <div className="text-xl font-black text-sky-700">{pendingBondsCount}</div>
+              <div className="text-[10px] text-sky-600 font-semibold">Bons en attente bénéficiaire</div>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-stone-100 overflow-hidden">
+            {notifs.length === 0 && <div className="p-6 text-center text-sm text-stone-400">Aucune notification</div>}
+            {notifs.map((n) => (
+              <div key={n.id} className="px-4 py-3 border-b border-stone-50 last:border-0">
+                <div className="font-bold text-stone-800 text-sm">{n.title}</div>
+                <div className="text-xs text-stone-500">{n.message}</div>
+                <div className="text-[10px] text-stone-400 mt-1">{new Date(n.createdAt).toLocaleString("fr-FR")}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const ALL_PERMISSION_KEYS = SUPERVISOR_PERMISSION_GROUPS.flatMap((g) => g.items.map((i) => i.key));
+
+function SecurityAccessPanel({ supervisors, onSelect, onClose }: {
+  supervisors: Profile[]; onSelect: (uid: string) => void; onClose: () => void;
+}) {
+  useBackGuard(true, onClose);
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
+          <div className="font-black text-stone-800 flex items-center gap-2"><Shield className="w-5 h-5 text-violet-600" /> Sécurité & accès</div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-stone-500">Superviseurs et droits accordés — touchez un superviseur pour modifier ses droits.</p>
+          {supervisors.length === 0 && (
+            <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+              <div className="text-sm text-stone-500 font-medium">Aucun superviseur enregistré</div>
+            </div>
+          )}
+          <div className="bg-white rounded-2xl border border-stone-100 overflow-hidden">
+            {supervisors.map((s) => {
+              const granted = ALL_PERMISSION_KEYS.filter((k) => hasPermission(s, k)).length;
+              return (
+                <button key={s.uid} onClick={() => onSelect(s.uid)}
+                  className="w-full px-4 py-3.5 flex items-center gap-3 border-b border-stone-50 last:border-0 text-left hover:bg-stone-50">
+                  <Avatar name={s.fullName} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-stone-900 text-sm">{s.fullName}</div>
+                    <div className="text-xs text-stone-500">{s.village}, {s.region}</div>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                    granted === ALL_PERMISSION_KEYS.length ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                  }`}>{granted}/{ALL_PERMISSION_KEYS.length} droits</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReportsPanel({ profiles, nameByUid, fund, splitTotals, onClose }: {
+  profiles: Profile[]; nameByUid: Map<string, string>; fund: GuaranteeFund | null;
+  splitTotals: { insurance: number; managementFee: number }; onClose: () => void;
+}) {
+  useBackGuard(true, onClose);
+  const [generating, setGenerating] = useState<string | null>(null);
+
+  const exportBeneficiaries = () => {
+    const farmers = profiles.filter((p) => p.role === "farmer");
+    downloadTablePdf({
+      title: "Liste des bénéficiaires", subtitle: `${farmers.length} bénéficiaire(s)`,
+      columns: ["Nom", "Village/Région", "KYC", "Superviseur", "Actif"],
+      rows: farmers.map((f) => [
+        f.fullName, `${f.village}, ${f.region}`, f.kycStatus,
+        f.supervisorId ? (nameByUid.get(f.supervisorId) ?? "—") : "—",
+        f.active ? "Oui" : "Non",
+      ]),
+    }, "Beneficiaires_COOPAVEC.pdf");
+  };
+
+  const exportFunds = () => {
+    downloadTablePdf({
+      title: "Cotisations & fonds", subtitle: "Situation actuelle",
+      columns: ["Libellé", "Montant"],
+      rows: [
+        ["Total cotisations — assurance", `${splitTotals.insurance.toLocaleString("fr-FR")} F`],
+        ["Total cotisations — frais de gestion", `${splitTotals.managementFee.toLocaleString("fr-FR")} F`],
+        ["Fonds de garantie déposé", `${(fund?.totalDeposited ?? 0).toLocaleString("fr-FR")} F`],
+        ["Disponible pour crédits", `${(fund?.availableForCredit ?? 0).toLocaleString("fr-FR")} F`],
+        ["Déjà prêté (crédits)", `${(fund?.totalDisbursedAsCredits ?? 0).toLocaleString("fr-FR")} F`],
+      ],
+    }, "Cotisations_Fonds_COOPAVEC.pdf");
+  };
+
+  const exportBonds = async () => {
+    setGenerating("bonds");
+    try {
+      const credits = await listAllCredits();
+      downloadTablePdf({
+        title: "Bons de financement", subtitle: `${credits.length} bon(s)`,
+        columns: ["Bénéficiaire", "Montant", "Statut", "Crédité", "Engagé"],
+        rows: credits.map((c) => [
+          nameByUid.get(c.userId) ?? c.userId,
+          `${(c.approvedAmount ?? 0).toLocaleString("fr-FR")} F`,
+          c.status,
+          `${c.creditedAmount.toLocaleString("fr-FR")} F`,
+          `${c.investedAmount.toLocaleString("fr-FR")} F`,
+        ]),
+      }, "Bons_Financement_COOPAVEC.pdf");
+    } finally {
+      setGenerating(null);
+    }
+  };
+
+  const items = [
+    { key: "beneficiaries", icon: Users, label: "Liste des bénéficiaires", onClick: exportBeneficiaries },
+    { key: "funds", icon: DollarSign, label: "Cotisations & fonds", onClick: exportFunds },
+    { key: "bonds", icon: CreditCard, label: "Bons de financement", onClick: exportBonds },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
+          <div className="font-black text-stone-800 flex items-center gap-2"><FileText className="w-5 h-5 text-violet-600" /> Rapports</div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-4 space-y-2">
+          {items.map((it) => {
+            const Icon = it.icon;
+            return (
+              <button key={it.key} onClick={it.onClick} disabled={generating === it.key}
+                className="w-full flex items-center gap-3 px-4 py-4 bg-stone-50 rounded-2xl border border-stone-200 hover:bg-stone-100 disabled:opacity-50">
+                <div className="w-9 h-9 bg-violet-50 rounded-xl flex items-center justify-center"><Icon className="w-4 h-4 text-violet-600" /></div>
+                <div className="flex-1 text-left font-bold text-stone-800 text-sm">{it.label}</div>
+                {generating === it.key ? <Loader className="w-4 h-4 animate-spin text-stone-400" /> : <ChevronRight className="w-4 h-4 text-stone-300" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CooperativeInfoPanel({ onClose }: { onClose: () => void }) {
+  useBackGuard(true, onClose);
+  const [info, setInfo] = useState<CooperativeInfo | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => { const u = subscribeToCooperativeInfo(setInfo); return () => u(); }, []);
+
+  const patch = (p: Partial<CooperativeInfo>) => setInfo((prev) => (prev ? { ...prev, ...p } : prev));
+
+  const handleSave = async () => {
+    if (!info) return;
+    setSaving(true);
+    try {
+      await updateCooperativeInfo({ name: info.name, phone: info.phone, email: info.email, address: info.address, region: info.region });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const fields: { key: keyof Omit<CooperativeInfo, "updatedAt">; label: string }[] = [
+    { key: "name", label: "Nom de la coopérative" },
+    { key: "phone", label: "Téléphone" },
+    { key: "email", label: "Email" },
+    { key: "address", label: "Adresse" },
+    { key: "region", label: "Région" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
+          <div className="font-black text-stone-800 flex items-center gap-2"><Building2 className="w-5 h-5 text-violet-600" /> Coopérative</div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
+        </div>
+        {!info ? (
+          <div className="p-8 flex justify-center"><Loader className="w-6 h-6 animate-spin text-stone-400" /></div>
+        ) : (
+          <div className="p-4 space-y-4">
+            {fields.map((f) => (
+              <div key={f.key}>
+                <label className="block text-sm font-semibold text-stone-700 mb-1.5">{f.label}</label>
+                <input value={info[f.key]} onChange={(e) => patch({ [f.key]: e.target.value })}
+                  className="w-full px-3 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-violet-500 outline-none text-sm" />
+              </div>
+            ))}
+            <button onClick={handleSave} disabled={saving}
+              className={`w-full py-4 rounded-2xl font-black text-white flex items-center justify-center gap-2 disabled:opacity-60 ${saved ? "bg-emerald-500" : "bg-gradient-to-br from-violet-600 to-purple-600"}`}>
+              {saving ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              {saved ? "Enregistré !" : "Enregistrer"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
