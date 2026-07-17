@@ -6,7 +6,7 @@ import {
   Clock, Phone, QrCode, MapPin, User, Leaf, Users, Truck, Warehouse,
   Recycle, FileText, Camera, BarChart2, CreditCard, Building2,
   Package, BadgeCheck, ChevronRight, Star, TrendingUp, Banknote,
-  LogOut, Settings, Bell, PieChart, Activity, DollarSign, X, UserPlus,
+  LogOut, Settings, Bell, PieChart, Activity, X, UserPlus,
   UsersRound, Plus, Pencil, Trash2,
 } from "lucide-react";
 import { AppProvider, useApp } from "./context/AppContext";
@@ -2285,7 +2285,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
 
   const kpis = [
     { label: "Bénéficiaires enregistrés", val: profiles.length.toLocaleString("fr-FR"), icon: Users },
-    { label: "Fonds de garantie déposé",  val: `${(fund?.totalDeposited ?? 0).toLocaleString("fr-FR")} F`, icon: DollarSign },
+    { label: "Fonds de garantie déposé",  val: `${(fund?.totalDeposited ?? 0).toLocaleString("fr-FR")} F`, icon: Wallet },
     { label: "Disponible pour crédits",   val: `${(fund?.availableForCredit ?? 0).toLocaleString("fr-FR")} F`, icon: Activity },
     { label: "Crédits actifs",            val: activeCreditsCount.toLocaleString("fr-FR"), icon: CreditCard },
     { label: "Total cotisations — assurance",       val: `${splitTotals.insurance.toLocaleString("fr-FR")} F`, icon: Shield },
@@ -2845,7 +2845,7 @@ function ReportsPanel({ profiles, nameByUid, fund, splitTotals, onClose }: {
 
   const items = [
     { key: "beneficiaries", icon: Users, label: "Liste des bénéficiaires", onClick: exportBeneficiaries },
-    { key: "funds", icon: DollarSign, label: "Cotisations & fonds", onClick: exportFunds },
+    { key: "funds", icon: Coins, label: "Cotisations & fonds", onClick: exportFunds },
     { key: "bonds", icon: CreditCard, label: "Bons de financement", onClick: exportBonds },
   ];
 
