@@ -32,7 +32,7 @@ import { looksLikeEmail, syntheticEmailForPhone } from "./lib/phoneAuth";
 import { createGroup, updateGroup, deleteGroup, subscribeToGroupsByCooperative } from "./services/groupService";
 import { hasPermission, SUPERVISOR_PERMISSION_GROUPS } from "./lib/permissions";
 import { uploadKycPhoto, uploadLossPhoto } from "./services/storageService";
-import { submitLossClaim, getUserLossValueFcfa } from "./services/lossService";
+import { submitLossClaim, getUserLossValueFcfa, subscribeToUserLossClaims } from "./services/lossService";
 import DocumentPreviewModal from "./components/DocumentPreviewModal";
 import type { PdfDocumentData } from "./lib/pdf";
 import { downloadTablePdf } from "./lib/pdf";
@@ -51,7 +51,7 @@ import MemberDetailPanel from "./components/MemberDetailPanel";
 import { listRecentTransactions } from "./services/transactionService";
 import { getAgriculturalAdvice } from "./lib/weather";
 import { useBackGuard } from "./lib/backGuard";
-import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction, SusuGroup, BondInvestment } from "./types/firestore";
+import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction, SusuGroup, BondInvestment, LossClaim } from "./types/firestore";
 
 // ==================== COMPOSANTS RÉUTILISABLES ====================
 
@@ -149,6 +149,22 @@ function Toast() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Module pas encore branché à une vraie source de données — aucune donnée inventée affichée. */
+function ComingSoonNotice({ icon: Icon, title, message }: { icon: typeof Clock; title: string; message: string }) {
+  return (
+    <div className="bg-white rounded-2xl p-8 text-center border border-dashed border-stone-300">
+      <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-amber-50 flex items-center justify-center">
+        <Icon className="w-6 h-6 text-amber-600" />
+      </div>
+      <div className="font-black text-stone-800 mb-1">{title}</div>
+      <p className="text-sm text-stone-500 max-w-xs mx-auto leading-relaxed">{message}</p>
+      <div className="mt-3 inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 text-[11px] font-bold px-3 py-1.5 rounded-full">
+        <Clock className="w-3 h-3" /> Bientôt disponible
+      </div>
     </div>
   );
 }
@@ -691,19 +707,13 @@ function SusuPage() {
   const { user } = useAuth();
   const [weeks, setWeeks] = useState(1);
   const amount = WEEKLY_CONTRIBUTION * weeks;
-  const [tab, setTab] = useState<"epargne" | "fonds">("epargne");
-  const [fund, setFund] = useState<GuaranteeFund | null>(null);
   const [myContribution, setMyContribution] = useState(0);
+  const [balance, setBalance] = useState(0);
   const [streak, setStreak] = useState(0);
 
   useEffect(() => {
-    const unsubscribe = subscribeToGuaranteeFund(setFund);
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
     if (!user) return;
-    const unsubscribe = subscribeToWallet(user.id, (w) => setMyContribution(w?.totalContributed ?? 0));
+    const unsubscribe = subscribeToWallet(user.id, (w) => { setMyContribution(w?.totalContributed ?? 0); setBalance(w?.balance ?? 0); });
     return () => unsubscribe();
   }, [user?.id]);
 
@@ -733,72 +743,36 @@ function SusuPage() {
           )}
         </div>
         <div className="text-2xl font-black mb-1">Épargne collective 🤝</div>
-        <div className="text-sm opacity-95">L'argent cotisé par tous les bénéficiaires devient l'assurance qui débloque les crédits agricoles</div>
+        <div className="text-sm opacity-95">Cotisez régulièrement pour devenir éligible aux bons de financement et à l'assurance agricole</div>
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Fonds commun</div><div className="font-black text-lg">{(fund?.totalDeposited ?? 0).toLocaleString("fr-FR")} F</div></div>
           <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Ma cotisation totale</div><div className="font-black text-lg">{myContribution.toLocaleString("fr-FR")} F</div></div>
+          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-xs opacity-80">Mon solde disponible</div><div className="font-black text-lg">{balance.toLocaleString("fr-FR")} F</div></div>
         </div>
       </div>
 
-      <div className="flex gap-2 mb-4">
-        {(["epargne", "fonds"] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold capitalize transition-all ${
-              tab === t ? "bg-amber-500 text-white shadow" : "bg-white border border-stone-200 text-stone-600"
-            }`}>
-            {t === "epargne" ? "💰 Cotiser" : "🏦 Le fonds commun"}
-          </button>
-        ))}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-200">
+        <p className="text-xs text-stone-500 mb-3">
+          Cotisation fixe de <span className="font-black text-stone-700">1 500 FCFA / semaine</span>. Cotiser régulièrement rend éligible aux bons de financement et à l'assurance agricole.
+        </p>
+        <div className="flex items-center justify-center gap-3 mb-3">
+          <button onClick={() => setWeeks((w) => Math.max(1, w - 1))}
+            className="w-10 h-10 rounded-xl bg-stone-100 text-stone-700 font-black text-lg">−</button>
+          <div className="text-center">
+            <div className="text-2xl font-black text-stone-800">{weeks}</div>
+            <div className="text-[10px] text-stone-500 font-semibold uppercase">semaine{weeks > 1 ? "s" : ""}</div>
+          </div>
+          <button onClick={() => setWeeks((w) => w + 1)}
+            className="w-10 h-10 rounded-xl bg-stone-100 text-stone-700 font-black text-lg">+</button>
+        </div>
+        <div className="bg-amber-50 rounded-xl p-4 text-center mb-3 border border-amber-100">
+          <Money value={amount} size="md" />
+        </div>
+        <div className="mb-3">
+          <WavePaymentBanner amount={amount} />
+        </div>
+        <ConfirmButton onConfirm={confirmContribution} label="Confirmer ✓"
+          className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600" />
       </div>
-
-      {tab === "epargne" && (
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-200">
-          <p className="text-xs text-stone-500 mb-3">
-            Cotisation fixe de <span className="font-black text-stone-700">1 500 FCFA / semaine</span>. Cotiser régulièrement rend éligible aux crédits agricoles et à l'assurance agricole.
-          </p>
-          <div className="flex items-center justify-center gap-3 mb-3">
-            <button onClick={() => setWeeks((w) => Math.max(1, w - 1))}
-              className="w-10 h-10 rounded-xl bg-stone-100 text-stone-700 font-black text-lg">−</button>
-            <div className="text-center">
-              <div className="text-2xl font-black text-stone-800">{weeks}</div>
-              <div className="text-[10px] text-stone-500 font-semibold uppercase">semaine{weeks > 1 ? "s" : ""}</div>
-            </div>
-            <button onClick={() => setWeeks((w) => w + 1)}
-              className="w-10 h-10 rounded-xl bg-stone-100 text-stone-700 font-black text-lg">+</button>
-          </div>
-          <div className="bg-amber-50 rounded-xl p-4 text-center mb-3 border border-amber-100">
-            <Money value={amount} size="md" />
-          </div>
-          <div className="mb-3">
-            <WavePaymentBanner amount={amount} />
-          </div>
-          <ConfirmButton onConfirm={confirmContribution} label="Confirmer ✓"
-            className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600" />
-        </div>
-      )}
-
-      {tab === "fonds" && (
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-200 space-y-3">
-          <div className="grid grid-cols-2 gap-2 text-center">
-            <div className="bg-stone-50 rounded-xl p-3 border border-stone-200">
-              <div className="text-xs text-stone-500 font-semibold">Déposé en banque</div>
-              <div className="font-black text-stone-800">{(fund?.totalDeposited ?? 0).toLocaleString("fr-FR")} F</div>
-            </div>
-            <div className="bg-stone-50 rounded-xl p-3 border border-stone-200">
-              <div className="text-xs text-stone-500 font-semibold">Déjà prêté (crédits)</div>
-              <div className="font-black text-stone-800">{(fund?.totalDisbursedAsCredits ?? 0).toLocaleString("fr-FR")} F</div>
-            </div>
-            <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100 col-span-2">
-              <div className="text-xs text-emerald-700 font-semibold">Disponible pour de nouveaux crédits</div>
-              <div className="font-black text-emerald-800 text-lg">{(fund?.availableForCredit ?? 0).toLocaleString("fr-FR")} F</div>
-            </div>
-          </div>
-          <p className="text-xs text-stone-500 flex items-start gap-2">
-            <span>Chaque cotisation renforce le fonds commun. Ce fonds sert de garantie auprès de la banque : plus il est important, plus les bénéficiaires peuvent accéder à des crédits agricoles importants.</span>
-            <SpeakButton text="Chaque cotisation renforce le fonds commun. Ce fonds sert de garantie auprès de la banque. Plus il est important, plus les bénéficiaires peuvent accéder à des crédits agricoles importants." />
-          </p>
-        </div>
-      )}
     </div>
   );
 }
@@ -1002,7 +976,6 @@ function CreditPage() {
 // ==================== MODULE 5 : ASSURANCE AGRICOLE ====================
 
 function InsurancePage() {
-  const { lang, insuranceTriggered, addTx, pushToast } = useApp();
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-rose-500 via-pink-600 to-red-700 text-white rounded-3xl p-5 shadow-xl mb-4">
@@ -1017,50 +990,8 @@ function InsurancePage() {
         </div>
       </div>
 
-      {insuranceTriggered ? (
-        <div className="animate-fade-up delay-1 bg-gradient-to-br from-amber-50 to-rose-50 border-2 border-amber-300 rounded-2xl p-4 mb-4">
-          <div className="flex items-start gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-amber-200 flex items-center justify-center flex-shrink-0">
-              <AlertTriangle className="w-7 h-7 text-amber-700" />
-            </div>
-            <div className="flex-1">
-              <div className="font-black text-amber-900 text-lg">Sinistre déclenché 🚨</div>
-              <div className="text-sm text-amber-800 mt-1">45 jours sans pluie détectés par satellite.</div>
-              <div className="bg-white rounded-xl p-3 my-3 text-center border border-amber-200">
-                <Money value={15000} size="md" />
-              </div>
-              <button onClick={() => {
-                addTx({ type: "payout", amount: 15000, label: "Indemnité — Sécheresse" });
-                pushToast({ tone: "success", title: "Indemnité reçue 🎉", message: "15 000 F versés" });
-              }} className="w-full bg-gradient-to-br from-amber-500 to-orange-600 text-white rounded-xl py-3 font-black shadow-lg">
-                Réclamer l'indemnité · 15 000 F
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="animate-fade-up delay-1 bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-4 mb-4 flex items-center gap-3">
-          <CheckCircle2 className="w-7 h-7 text-emerald-600" />
-          <div className="font-black text-emerald-900">Tout va bien — Aucun sinistre 💚</div>
-        </div>
-      )}
-
-      {/* Polices souscrites */}
-      <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-        <div className="font-black text-stone-800 mb-3">📋 Mes polices</div>
-        {[
-          { name: "Assurance Sécheresse", parcelle: "Champ Anacarde", prime: 3500, statut: "Active" },
-          { name: "Assurance Inondation", parcelle: "Rizière Nord",   prime: 2500, statut: "Active" },
-        ].map((pol, i) => (
-          <div key={i} className="flex items-center justify-between py-2.5 border-b border-stone-100 last:border-0">
-            <div>
-              <div className="font-bold text-stone-800 text-sm">{pol.name}</div>
-              <div className="text-xs text-stone-500">{pol.parcelle} · Prime {pol.prime.toLocaleString("fr-FR")} F/mois</div>
-            </div>
-            <div className="text-xs font-bold bg-emerald-100 text-emerald-700 rounded-full px-2 py-1">{pol.statut}</div>
-          </div>
-        ))}
-      </div>
+      <ComingSoonNotice icon={Shield} title="Polices & déclenchement automatique"
+        message="La souscription de polices et la détection automatique des sinistres (sécheresse, inondation) arrivent bientôt." />
     </div>
   );
 }
@@ -1077,11 +1008,18 @@ function AgriProtectPage() {
   const [comment, setComment] = useState("");
   const [photos, setPhotos] = useState<(File | null)[]>([null, null, null]);
   const [previews, setPreviews] = useState<(string | null)[]>([null, null, null]);
+  const [claims, setClaims] = useState<LossClaim[]>([]);
   const photoInputRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
 
   useEffect(() => {
     getCurrentLocation().then(setGps).catch((err) => setGpsError(err instanceof Error ? err.message : "Position GPS indisponible"));
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const u = subscribeToUserLossClaims(user.id, setClaims);
+    return () => u();
+  }, [user?.id]);
 
   const handlePhotoSelected = (i: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1174,18 +1112,16 @@ function AgriProtectPage() {
       {/* Historique sinistres */}
       <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
         <div className="font-black text-stone-800 mb-3">📋 Historique sinistres</div>
-        {[
-          { date: "12/05/2026", type: "Sécheresse",    statut: "Indemnisé",   montant: 15000 },
-          { date: "03/02/2026", type: "Maladie plants", statut: "En expertise", montant: null },
-        ].map((s, i) => (
-          <div key={i} className="flex items-center justify-between py-2.5 border-b border-stone-100 last:border-0">
-            <div>
-              <div className="font-bold text-stone-800 text-sm">{s.type}</div>
-              <div className="text-xs text-stone-500">{s.date}</div>
+        {claims.length === 0 && (
+          <div className="text-sm text-stone-400 text-center py-4">Aucun sinistre déclaré pour l'instant</div>
+        )}
+        {claims.map((s) => (
+          <div key={s.id} className="flex items-center justify-between py-2.5 border-b border-stone-100 last:border-0">
+            <div className="min-w-0 pr-2">
+              <div className="font-bold text-stone-800 text-sm truncate">{s.comment || "Sinistre déclaré"}</div>
+              <div className="text-xs text-stone-500">{new Date(s.createdAt).toLocaleDateString("fr-FR")}</div>
             </div>
-            <div className={`text-xs font-bold rounded-full px-2 py-1 ${s.statut === "Indemnisé" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-              {s.statut}{s.montant ? ` · ${s.montant.toLocaleString("fr-FR")} F` : ""}
-            </div>
+            <div className="text-xs font-bold rounded-full px-2 py-1 bg-amber-100 text-amber-700 flex-shrink-0">Déclaré</div>
           </div>
         ))}
       </div>
@@ -1374,25 +1310,33 @@ function CertificatePage() {
 // ==================== MODULE 11 : COOPAVEC (Coopérative) ====================
 
 function CoopavecPage() {
-  const { pushToast } = useApp();
+  const [memberCount, setMemberCount] = useState<number | null>(null);
+  const [fund, setFund] = useState<GuaranteeFund | null>(null);
+  const [activeBonds, setActiveBonds] = useState<number | null>(null);
+
+  useEffect(() => { listProfiles().then((p) => setMemberCount(p.filter((x) => x.role === "farmer" && x.active).length)); }, []);
+  useEffect(() => { const u = subscribeToGuaranteeFund(setFund); return () => u(); }, []);
+  useEffect(() => { countActiveCredits().then(setActiveBonds); }, []);
+
+  const cagnotte = `${(fund?.totalDeposited ?? 0).toLocaleString("fr-FR")} F`;
+  const items = [
+    { icon: Users, label: "Membres de la coopérative", count: memberCount !== null ? `${memberCount} bénéficiaire${memberCount > 1 ? "s" : ""} actif${memberCount > 1 ? "s" : ""}` : "…" },
+    { icon: Coins, label: "Épargne coopérative", count: cagnotte },
+    { icon: CreditCard, label: "Bons de financement", count: activeBonds !== null ? `${activeBonds} bon${activeBonds > 1 ? "s" : ""} actif${activeBonds > 1 ? "s" : ""}` : "…" },
+  ];
+
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-indigo-600 via-blue-700 to-violet-700 text-white rounded-3xl p-5 shadow-xl mb-4">
         <div className="flex items-center gap-2 mb-2"><Building2 className="w-6 h-6" /><div className="font-black text-lg">COOPAVEC</div></div>
         <p className="text-sm opacity-90">Tableau de bord de votre coopérative agricole</p>
         <div className="grid grid-cols-2 gap-3 mt-3">
-          <div className="bg-white/20 rounded-xl p-3"><div className="text-xs opacity-80">Membres</div><div className="text-2xl font-black">47</div></div>
-          <div className="bg-white/20 rounded-xl p-3"><div className="text-xs opacity-80">Cagnotte coop</div><div className="text-2xl font-black">1.2M F</div></div>
+          <div className="bg-white/20 rounded-xl p-3"><div className="text-xs opacity-80">Membres</div><div className="text-2xl font-black">{memberCount ?? "—"}</div></div>
+          <div className="bg-white/20 rounded-xl p-3"><div className="text-xs opacity-80">Cagnotte coop</div><div className="text-2xl font-black">{cagnotte}</div></div>
         </div>
       </div>
 
-      {/* Tabs */}
-      {[
-        { icon: Users, label: "Gestion membres", count: "47 membres actifs" },
-        { icon: TrendingUp, label: "Production collective", count: "142 t cette saison" },
-        { icon: Coins, label: "Épargne coopérative", count: "1 200 000 F" },
-        { icon: CreditCard, label: "Crédit groupe", count: "3 dossiers en cours" },
-      ].map((item, i) => (
+      {items.map((item, i) => (
         <div key={i} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-3 flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center">
             <item.icon className="w-6 h-6 text-indigo-600" />
@@ -1401,9 +1345,11 @@ function CoopavecPage() {
             <div className="font-black text-stone-800">{item.label}</div>
             <div className="text-xs text-stone-500">{item.count}</div>
           </div>
-          <ChevronRight className="w-5 h-5 text-stone-400" />
         </div>
       ))}
+
+      <ComingSoonNotice icon={TrendingUp} title="Production collective"
+        message="Le suivi de la production agrégée de la coopérative sera bientôt disponible ici." />
     </div>
   );
 }
@@ -1411,125 +1357,15 @@ function CoopavecPage() {
 // ==================== MODULE : MARKETPLACE AGRICOLE (SOP-02) ====================
 
 function MarketplacePage() {
-  const { pushToast } = useApp();
-  const [tab, setTab] = useState<"offres" | "commande" | "suivi">("offres");
-  const [qty, setQty]     = useState(500);
-  const [price, setPrice] = useState(350);
-  const [published, setPublished] = useState(false);
-
-  const orderSteps = [
-    { label: "Offre publiée & validée",         sub: "Contrôle qualité back-office", done: true,  time: "01/07 09:00" },
-    { label: "Commande passée par l'acheteur",  sub: "Bon de commande digital",      done: true,  time: "02/07 14:20" },
-    { label: "Confirmation automatique",        sub: "Notif. vendeur + logisticien", done: true,  time: "02/07 14:21" },
-    { label: "Préparation de la marchandise",   sub: "Conditionnement",              done: true,  time: "03/07 08:00" },
-    { label: "Collecte par le logisticien",     sub: "Bon de collecte + pesée",      done: false, time: "04/07 (prévu)" },
-    { label: "Contrôle qualité à la collecte",  sub: "Fiche contrôle qualité",       done: false, time: "—" },
-    { label: "Livraison à l'acheteur",          sub: "Bon de livraison signé",       done: false, time: "—" },
-    { label: "Confirmation réception",          sub: "Accusé de réception digital",  done: false, time: "—" },
-    { label: "Paiement vendeur déclenché",      sub: "Agrifinance Pay · J3–J5",       done: false, time: "—" },
-  ];
-  const doneCount = orderSteps.filter(s => s.done).length;
-
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-orange-500 via-amber-600 to-yellow-700 text-white rounded-3xl p-5 shadow-xl mb-4">
         <div className="flex items-center gap-2 mb-2"><Package className="w-6 h-6" /><div className="font-black text-lg">Marketplace Agricole</div></div>
         <p className="text-sm opacity-90">Publiez vos récoltes, suivez vos commandes jusqu'au paiement.</p>
-        <div className="grid grid-cols-3 gap-2 mt-3">
-          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-[10px] opacity-80">Délai moyen</div><div className="font-black text-sm">≤ 3 j</div></div>
-          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-[10px] opacity-80">Livrées à temps</div><div className="font-black text-sm">≥ 90%</div></div>
-          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-[10px] opacity-80">Litiges</div><div className="font-black text-sm">≤ 5%</div></div>
-        </div>
       </div>
 
-      <div className="flex gap-2 mb-4">
-        {(["offres", "commande", "suivi"] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-              tab === t ? "bg-orange-500 text-white shadow" : "bg-white border border-stone-200 text-stone-600"
-            }`}>
-            {t === "offres" ? "📢 Publier" : t === "commande" ? "🧾 Commandes" : "📍 Suivi"}
-          </button>
-        ))}
-      </div>
-
-      {tab === "offres" && (
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm space-y-3">
-          <div className="font-black text-stone-800">Publier une offre</div>
-          <div className="text-xs text-stone-500 -mt-2">Validée par le back-office marketplace avant mise en ligne (contrôle qualité & conformité).</div>
-          <div>
-            <div className="text-xs font-bold text-stone-600 mb-1.5">Quantité disponible (kg)</div>
-            <div className="grid grid-cols-4 gap-2">
-              {[100, 500, 1000, 2000].map(v => (
-                <button key={v} onClick={() => setQty(v)} className={`py-2.5 rounded-xl text-xs font-black transition-all ${
-                  qty === v ? "bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-md scale-105" : "bg-stone-100 text-stone-700"
-                }`}>{v} kg</button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="text-xs font-bold text-stone-600 mb-1.5">Prix par kg (FCFA)</div>
-            <div className="grid grid-cols-4 gap-2">
-              {[250, 350, 500, 700].map(v => (
-                <button key={v} onClick={() => setPrice(v)} className={`py-2.5 rounded-xl text-xs font-black transition-all ${
-                  price === v ? "bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-md scale-105" : "bg-stone-100 text-stone-700"
-                }`}>{v} F</button>
-              ))}
-            </div>
-          </div>
-          <div className="bg-orange-50 rounded-xl p-3 text-center border border-orange-100">
-            <div className="text-xs text-stone-500 font-semibold">Valeur totale estimée</div>
-            <Money value={qty * price} size="md" />
-          </div>
-          <button onClick={() => {
-            setPublished(true);
-            pushToast({ tone: "success", title: "Offre soumise !", message: "En attente de validation back-office (J0→J1)" });
-          }} disabled={published} className={`w-full py-4 rounded-2xl font-black text-white transition-all ${
-            published ? "bg-emerald-500" : "bg-gradient-to-br from-orange-500 to-amber-600"
-          }`}>
-            {published ? "✓ Offre soumise" : "Publier l'offre"}
-          </button>
-        </div>
-      )}
-
-      {tab === "commande" && (
-        <div className="space-y-3">
-          {[
-            { buyer: "Transformateur ANACOOP", item: "Anacarde Grade A", qty: "1 200 kg", status: "Confirmée", color: "bg-emerald-100 text-emerald-700" },
-            { buyer: "Revendeur Marché Bouaké", item: "Maïs sec",        qty: "800 kg",   status: "En préparation", color: "bg-amber-100 text-amber-700" },
-            { buyer: "Restaurateur Abidjan",    item: "Manioc frais",    qty: "300 kg",   status: "Livrée", color: "bg-sky-100 text-sky-700" },
-          ].map((o, i) => (
-            <div key={i} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-              <div className="flex items-start justify-between mb-1">
-                <div className="font-black text-stone-800 text-sm">{o.buyer}</div>
-                <span className={`text-[10px] font-black rounded-full px-2 py-1 ${o.color}`}>{o.status}</span>
-              </div>
-              <div className="text-xs text-stone-500">{o.item} · {o.qty}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {tab === "suivi" && (
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <div className="font-black text-stone-800">Cycle de la commande</div>
-            <span className="text-xs font-black text-orange-600">{doneCount}/{orderSteps.length}</span>
-          </div>
-          {orderSteps.map((s, i) => (
-            <div key={i} className="flex items-start gap-3 py-2.5 border-b border-stone-100 last:border-0">
-              <div className={`w-6 h-6 mt-0.5 rounded-full flex items-center justify-center flex-shrink-0 ${s.done ? "bg-emerald-500" : "bg-stone-200"}`}>
-                {s.done ? <CheckCircle2 className="w-4 h-4 text-white" /> : <div className="w-2 h-2 bg-stone-400 rounded-full" />}
-              </div>
-              <div className="flex-1">
-                <div className={`text-sm font-bold ${s.done ? "text-stone-800" : "text-stone-400"}`}>{s.label}</div>
-                <div className="text-xs text-stone-400">{s.sub}</div>
-              </div>
-              <div className="text-xs text-stone-400 font-medium whitespace-nowrap">{s.time}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      <ComingSoonNotice icon={Package} title="Marketplace agricole"
+        message="La publication d'offres et le suivi des commandes jusqu'au paiement arrivent bientôt." />
     </div>
   );
 }
@@ -1537,9 +1373,6 @@ function MarketplacePage() {
 // ==================== MODULE 12 : COLLECTE AGRICOLE ====================
 
 function CollectePage() {
-  const { pushToast } = useApp();
-  const [step, setStep] = useState<"declare" | "request" | "track">("declare");
-
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-amber-800 via-amber-700 to-yellow-800 text-white rounded-3xl p-5 shadow-xl mb-4">
@@ -1547,85 +1380,8 @@ function CollectePage() {
         <p className="text-sm opacity-90">Déclarez votre récolte et planifiez le transport vers l'entrepôt.</p>
       </div>
 
-      <div className="flex gap-2 mb-4">
-        {(["declare", "request", "track"] as const).map(s => (
-          <button key={s} onClick={() => setStep(s)}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-              step === s ? "bg-amber-700 text-white shadow" : "bg-white border border-stone-200 text-stone-600"
-            }`}>
-            {s === "declare" ? "📋 Récolte" : s === "request" ? "🚜 Collecte" : "📍 Suivi"}
-          </button>
-        ))}
-      </div>
-
-      {step === "declare" && (
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm space-y-3">
-          <div className="font-black text-stone-800">Déclaration de récolte</div>
-          {[
-            { label: "Culture", value: "Anacarde" },
-            { label: "Quantité (kg)", value: "2 400 kg" },
-            { label: "Qualité", value: "Grade A" },
-            { label: "Parcelle", value: "Champ Nord · 3.2 ha" },
-          ].map(row => (
-            <div key={row.label} className="flex justify-between py-2 border-b border-stone-100">
-              <span className="text-sm text-stone-500 font-semibold">{row.label}</span>
-              <span className="text-sm font-black text-stone-800">{row.value}</span>
-            </div>
-          ))}
-          <button onClick={() => { setStep("request"); pushToast({ tone: "success", title: "Récolte déclarée !", message: "2 400 kg d'anacarde" }); }}
-            className="w-full py-3 bg-amber-700 text-white rounded-xl font-black">Confirmer la déclaration</button>
-        </div>
-      )}
-
-      {step === "request" && (
-        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm space-y-3">
-          <div className="font-black text-stone-800">Demande de collecte</div>
-          <div className="bg-amber-50 rounded-xl p-3 border border-amber-100">
-            <div className="text-xs font-semibold text-amber-800">Transporteur affecté</div>
-            <div className="font-black text-stone-800 mt-1">Koné Mamadou · 🚜 Camion 5t</div>
-            <div className="text-xs text-stone-500">Arrivée prévue : 30/06/2026 · 08h00</div>
-          </div>
-          <button className="w-full py-3 bg-emerald-600 text-white rounded-xl font-black">Confirmer la demande</button>
-        </div>
-      )}
-
-      {step === "track" && (
-        <div className="space-y-3">
-          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-            <div className="font-black text-stone-800 mb-3">Suivi en temps réel</div>
-            {[
-              { label: "Récolte déclarée",    done: true,  time: "28/06 09:00" },
-              { label: "Transporteur affecté", done: true,  time: "28/06 10:30" },
-              { label: "En cours de collecte", done: false, time: "30/06 08:00" },
-              { label: "Contrôle qualité (pesée)", done: false, time: "—" },
-              { label: "Réception entrepôt · lot QR généré", done: false, time: "—" },
-            ].map((s_, i) => (
-              <div key={i} className="flex items-center gap-3 py-2.5 border-b border-stone-100 last:border-0">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${s_.done ? "bg-emerald-500" : "bg-stone-200"}`}>
-                  {s_.done ? <CheckCircle2 className="w-4 h-4 text-white" /> : <div className="w-2 h-2 bg-stone-400 rounded-full" />}
-                </div>
-                <div className="flex-1"><div className={`text-sm font-bold ${s_.done ? "text-stone-800" : "text-stone-400"}`}>{s_.label}</div></div>
-                <div className="text-xs text-stone-400 font-medium">{s_.time}</div>
-              </div>
-            ))}
-          </div>
-          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-            <div className="flex items-center gap-2 mb-3"><QrCode className="w-5 h-5 text-amber-700" /><span className="font-black text-stone-800">Traçabilité du lot</span></div>
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 bg-white border-4 border-stone-800 rounded-xl grid grid-cols-6 gap-0.5 p-1.5 flex-shrink-0">
-                {Array.from({ length: 36 }).map((_, i) => (
-                  <div key={i} className={((i * 5 + 2) % 3 === 0) || (i < 6 || (i % 6 === 0) || (i > 29)) ? "bg-stone-900 rounded-sm" : "bg-white"} />
-                ))}
-              </div>
-              <div className="flex-1 text-xs space-y-1">
-                <div><span className="text-stone-400">Code lot :</span> <span className="font-mono font-bold text-stone-800">LOT-CI-260630-0842</span></div>
-                <div><span className="text-stone-400">Rotation :</span> <span className="font-bold text-stone-800">FIFO</span></div>
-                <div><span className="text-stone-400">Statut :</span> <span className="font-bold text-emerald-700">En attente réception</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ComingSoonNotice icon={Truck} title="Déclaration de récolte & collecte"
+        message="La déclaration de récolte, la demande de transport et le suivi de traçabilité du lot arrivent bientôt." />
     </div>
   );
 }
@@ -1640,49 +1396,8 @@ function EntrepotsPage() {
         <p className="text-sm opacity-90">Gestion des stocks, entrées, sorties et inventaires.</p>
       </div>
 
-      {/* Dashboard entrepôt */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        {[
-          { label: "Stock total", value: "4 820 kg", icon: "📦", color: "bg-cyan-50 border-cyan-200" },
-          { label: "Capacité", value: "78%", icon: "🏭", color: "bg-sky-50 border-sky-200" },
-          { label: "Entrées (juin)", value: "2 400 kg", icon: "⬇️", color: "bg-emerald-50 border-emerald-200" },
-          { label: "Sorties (juin)", value: "1 100 kg", icon: "⬆️", color: "bg-amber-50 border-amber-200" },
-        ].map((stat, i) => (
-          <div key={i} className={`bg-white rounded-2xl p-3 border shadow-sm ${stat.color}`}>
-            <div className="text-2xl mb-1">{stat.icon}</div>
-            <div className="text-xs text-stone-500 font-semibold">{stat.label}</div>
-            <div className="font-black text-stone-800 text-lg">{stat.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Inventaire */}
-      <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="font-black text-stone-800">📋 Inventaire actuel</div>
-          <span className="text-[10px] font-black bg-cyan-100 text-cyan-700 rounded-full px-2 py-1">Rotation FIFO</span>
-        </div>
-        {[
-          { produit: "Anacarde brut",    qte: "2 400 kg", lot: "L-2026-06", statut: "Bon",      qr: true,  entree: "12/06" },
-          { produit: "Maïs grain",       qte: "1 620 kg", lot: "L-2026-05", statut: "Bon",      qr: true,  entree: "28/05" },
-          { produit: "Cacao sec",        qte: "800 kg",   lot: "L-2026-04", statut: "Contrôle", qr: true,  entree: "14/05" },
-        ].map((item, i) => (
-          <div key={i} className="flex items-center justify-between py-2.5 border-b border-stone-100 last:border-0">
-            <div className="flex items-center gap-2">
-              {item.qr && <QrCode className="w-4 h-4 text-stone-400 flex-shrink-0" />}
-              <div>
-                <div className="font-bold text-stone-800 text-sm">{item.produit}</div>
-                <div className="text-xs text-stone-500">Lot {item.lot} · entrée {item.entree}</div>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="font-black text-stone-800 text-sm">{item.qte}</div>
-              <div className={`text-xs font-bold ${item.statut === "Bon" ? "text-emerald-600" : "text-amber-600"}`}>{item.statut}</div>
-            </div>
-          </div>
-        ))}
-        <div className="mt-3 text-[11px] text-stone-400">Sortie prioritaire : le lot le plus ancien (L-2026-04, entré le 14/05) sort en premier selon la règle FIFO.</div>
-      </div>
+      <ComingSoonNotice icon={Warehouse} title="Gestion des stocks"
+        message="Le suivi des entrées, sorties et de l'inventaire des entrepôts arrive bientôt." />
     </div>
   );
 }
@@ -1690,14 +1405,7 @@ function EntrepotsPage() {
 // ==================== MODULE 14 : RECYCLAGE DES DÉCHETS ====================
 
 function RecyclagePage() {
-  const { pushToast } = useApp();
   const dechetsCibles = ["Manioc 🥔", "Cacao 🍫", "Anacarde 🥜", "Maïs 🌽", "Palmier 🌴"];
-  const [gps, setGps] = useState<GeoPoint | null>(null);
-  const [gpsError, setGpsError] = useState("");
-
-  useEffect(() => {
-    getCurrentLocation().then(setGps).catch((err) => setGpsError(err instanceof Error ? err.message : "Position GPS indisponible"));
-  }, []);
 
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
@@ -1706,7 +1414,6 @@ function RecyclagePage() {
         <p className="text-sm opacity-90">Déclarez vos déchets agricoles pour collecte et valorisation.</p>
       </div>
 
-      {/* Déchets ciblés */}
       <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-4">
         <div className="font-black text-stone-800 mb-3">🌱 Déchets ciblés</div>
         <div className="flex flex-wrap gap-2">
@@ -1716,56 +1423,8 @@ function RecyclagePage() {
         </div>
       </div>
 
-      {/* Formulaire déclaration */}
-      <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-4">
-        <div className="font-black text-stone-800 mb-3">📋 Déclaration de déchets</div>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-black text-stone-600 mb-1 block">Type de déchet</label>
-            <select className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500">
-              <option>Coques d'anacarde</option>
-              <option>Rafles de maïs</option>
-              <option>Cabosse de cacao</option>
-              <option>Régimes palmier</option>
-              <option>Épluchures manioc</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-black text-stone-600 mb-1 block">Quantité estimée (kg)</label>
-            <input type="number" defaultValue={50} className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
-          </div>
-          <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100 flex items-center gap-3">
-            <MapPin className="w-5 h-5 text-emerald-600" />
-            <div>
-              <div className="text-xs font-bold text-emerald-800">Localisation automatique</div>
-              <div className="text-xs text-emerald-700 font-mono">
-                {gps ? `${gps.lat.toFixed(4)}° N · ${gps.lng.toFixed(4)}° E` : gpsError || "Localisation en cours…"}
-              </div>
-            </div>
-          </div>
-        </div>
-        <button onClick={() => pushToast({ tone: "success", title: "Déclaration enregistrée ♻️", message: "Collecte planifiée sous 72h" })}
-          className="mt-4 w-full py-4 rounded-2xl font-black text-white bg-gradient-to-br from-emerald-600 to-green-700 shadow-lg">
-          Déclarer pour collecte
-        </button>
-      </div>
-
-      {/* Registre */}
-      <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-        <div className="font-black text-stone-800 mb-3">📊 Registre déchets agricoles</div>
-        {[
-          { type: "Coques anacarde", qte: "120 kg", statut: "Collecté", valorisation: "Biomasse" },
-          { type: "Rafles maïs",     qte: "85 kg",  statut: "En attente", valorisation: "Compost" },
-        ].map((r, i) => (
-          <div key={i} className="flex items-center justify-between py-2.5 border-b border-stone-100 last:border-0">
-            <div>
-              <div className="font-bold text-stone-800 text-sm">{r.type} · {r.qte}</div>
-              <div className="text-xs text-stone-500">Valorisation : {r.valorisation}</div>
-            </div>
-            <div className={`text-xs font-bold rounded-full px-2 py-1 ${r.statut === "Collecté" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{r.statut}</div>
-          </div>
-        ))}
-      </div>
+      <ComingSoonNotice icon={Recycle} title="Déclaration & registre"
+        message="La déclaration de déchets pour collecte et le suivi de valorisation arrivent bientôt." />
     </div>
   );
 }
@@ -1782,9 +1441,8 @@ function CarbonPage() {
           <div className="bg-white/15 backdrop-blur rounded-xl p-3"><TreePine className="w-5 h-5 opacity-80 mb-1" /><div className="text-xs opacity-80 font-medium">CO₂ économisé</div><div className="text-2xl font-black">{co2Saved}t</div></div>
         </div>
       </div>
-      <button className="w-full bg-gradient-to-br from-emerald-500 to-green-600 text-white rounded-2xl py-4 font-black shadow-lg flex items-center justify-center gap-2">
-        💰 Vendre mes crédits carbone
-      </button>
+      <ComingSoonNotice icon={TreePine} title="Crédits carbone"
+        message="Le calcul et la vente de crédits carbone à partir de vos pratiques agricoles arrivent bientôt." />
     </div>
   );
 }
@@ -1874,47 +1532,20 @@ function WeatherPage() {
 // ==================== MODULE PAIEMENTS ====================
 
 function PaymentsPage() {
-  const { lang, balance, transactions, addTx, pushToast } = useApp();
-  const [mode, setMode]     = useState<"send" | "receive">("send");
-  const [phone, setPhone]   = useState("");
-  const [amount, setAmount] = useState(5000);
-  const [operator, setOperator] = useState("wave");
-  const [sent, setSent]     = useState(false);
-  const [otpStage, setOtpStage] = useState<"idle" | "sent" | "verified">("idle");
-  const [otpValue, setOtpValue] = useState("");
-  const [otpError, setOtpError] = useState("");
+  const { balance, transactions, pushToast } = useApp();
+  const { user } = useAuth();
+  const [amount, setAmount] = useState(1000);
 
-  const operators = [
-    { id: "wave",   label: "Wave",         color: "bg-blue-500" },
-    { id: "orange", label: "Orange Money", color: "bg-orange-500" },
-    { id: "mtn",    label: "MTN Money",    color: "bg-yellow-400" },
-    { id: "moov",   label: "Moov Money",   color: "bg-green-500" },
-  ];
-
-  // Plafonds réglementaires BCEAO — Compte de base (KYC niveau 1)
-  const PLAFOND_TX = 100000;
-  const PLAFOND_MOIS = 500000;
-  const OUTGOING_TYPES = new Set(["withdraw", "send", "credit_repayment"]);
-  const now = new Date();
-  const depenseMois = transactions
-    .filter((tx) => OUTGOING_TYPES.has(tx.type) && new Date(tx.createdAt).getMonth() === now.getMonth() && new Date(tx.createdAt).getFullYear() === now.getFullYear())
-    .reduce((sum, tx) => sum + tx.amount, 0);
-  const overLimit = amount > PLAFOND_TX;
-
-  const requestOtp = () => {
-    if (!phone || amount <= 0 || overLimit) return;
-    setOtpStage("sent");
-    setOtpError("");
-    pushToast({ tone: "info", title: "Code OTP envoyé", message: `SMS envoyé au ${phone || "numéro associé"}` });
-  };
-
-  const verifyOtp = () => {
-    if (otpValue.trim().length < 4) { setOtpError("Code OTP invalide (4 chiffres minimum)."); return; }
-    setOtpStage("verified");
-    addTx({ type: mode === "send" ? "send" : "receive", amount, label: mode === "send" ? `→ ${phone} (${operator.toUpperCase()})` : `← ${phone}` });
-    pushToast({ tone: "success", title: mode === "send" ? "Envoi réussi ✓" : "Réception confirmée ✓", message: `${amount.toLocaleString("fr-FR")} F` });
-    setSent(true);
-    setTimeout(() => { setSent(false); setOtpStage("idle"); setOtpValue(""); }, 2200);
+  const confirmContribution = async () => {
+    if (!user || amount <= 0) return;
+    try {
+      await recordContribution(user.id, amount, "guarantee_fund", "Cotisation libre — Wave");
+      pushToast({ tone: "success", title: "Cotisation enregistrée !", message: `${amount.toLocaleString("fr-FR")} F` });
+    } catch (err) {
+      console.error("Erreur cotisation libre :", err);
+      pushToast({ tone: "warn", title: "Échec de la cotisation", message: "Réessayez, vérifiez votre connexion." });
+      throw err;
+    }
   };
 
   return (
@@ -1922,87 +1553,36 @@ function PaymentsPage() {
       <div className="animate-fade-up relative bg-gradient-to-br from-indigo-600 to-violet-700 text-white rounded-3xl p-5 shadow-xl mb-4">
         <div className="text-xs opacity-90 font-semibold">💚 Solde disponible</div>
         <Money value={balance} size="lg" />
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-[10px] opacity-80">Plafond / transaction</div><div className="font-black text-sm">{PLAFOND_TX.toLocaleString("fr-FR")} F</div></div>
-          <div className="bg-white/20 rounded-xl p-2 text-center"><div className="text-[10px] opacity-80">Utilisé ce mois</div><div className="font-black text-sm">{depenseMois.toLocaleString("fr-FR")} / {PLAFOND_MOIS.toLocaleString("fr-FR")} F</div></div>
-        </div>
-      </div>
-
-      {/* Opérateurs */}
-      <div className="grid grid-cols-4 gap-2 mb-4">
-        {operators.map(op => (
-          <button key={op.id} onClick={() => setOperator(op.id)}
-            className={`py-2 rounded-xl text-white text-xs font-black transition-all ${op.color} ${operator === op.id ? "scale-105 shadow-lg" : "opacity-60"}`}>
-            {op.label}
-          </button>
-        ))}
       </div>
 
       <div className="animate-fade-up delay-1 bg-white rounded-2xl p-4 shadow-sm border border-stone-200 mb-4">
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <button onClick={() => setMode("send")} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-black transition-all ${
-            mode === "send" ? "bg-gradient-to-br from-rose-500 to-pink-600 text-white shadow-md" : "bg-stone-100 text-stone-600"
-          }`}><ArrowUpRight className="w-5 h-5" /> Envoyer</button>
-          <button onClick={() => setMode("receive")} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-black transition-all ${
-            mode === "receive" ? "bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-md" : "bg-stone-100 text-stone-600"
-          }`}><ArrowDownLeft className="w-5 h-5" /> Recevoir</button>
-        </div>
+        <div className="font-black text-stone-900 mb-1">Cotiser un montant libre</div>
+        <p className="text-xs text-stone-500 mb-3">
+          Contrairement à Bokanmin (1 500 F/semaine), choisissez ici le montant que vous voulez cotiser. Il sera prélevé et rendu disponible sur votre solde.
+        </p>
 
-        <div className="mb-3">
-          <label className="block text-xs font-black text-stone-600 mb-1.5">Numéro {mode === "send" ? "du destinataire" : "de l'expéditeur"}</label>
-          <div className="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-xl px-3 py-3">
-            <Phone className="w-5 h-5 text-stone-500" />
-            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+225 07 XX XX XX XX" className="bg-transparent flex-1 outline-none font-semibold" />
-          </div>
-        </div>
-
-        <div className="text-xs text-stone-500 mb-2 font-bold">Montant</div>
         <div className="grid grid-cols-4 gap-2 mb-3">
-          {[1000, 2000, 5000, 10000].map((v) => (
+          {[500, 1000, 2000, 5000].map((v) => (
             <button key={v} onClick={() => setAmount(v)} className={`py-2.5 rounded-xl text-sm font-black transition-all ${
               amount === v ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md scale-105" : "bg-stone-100 text-stone-700"
-            }`}>{v / 1000}k</button>
+            }`}>{v.toLocaleString("fr-FR")}</button>
           ))}
         </div>
+
+        <label className="block text-xs font-black text-stone-600 mb-1.5">Ou saisissez un autre montant (F)</label>
+        <input type="number" min={0} step={100} value={amount} onChange={(e) => setAmount(Math.max(0, Number(e.target.value)))}
+          className="w-full px-3 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-violet-500 outline-none text-sm font-bold mb-3" />
 
         <div className="bg-violet-50 rounded-xl p-3 text-center mb-3 border border-stone-200">
           <Money value={amount} size="md" />
         </div>
 
-        {overLimit && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl p-3 mb-3 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" /> Montant supérieur au plafond par transaction (Niveau KYC 1 : {PLAFOND_TX.toLocaleString("fr-FR")} F).
-          </div>
-        )}
+        <div className="mb-3">
+          <WavePaymentBanner amount={amount} />
+        </div>
 
-        {otpStage === "idle" && (
-          <button onClick={requestOtp} disabled={overLimit || !phone || amount <= 0}
-            className={`w-full py-4 rounded-2xl font-black text-white text-lg shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 ${
-              mode === "send" ? "bg-gradient-to-br from-rose-500 to-pink-600" : "bg-gradient-to-br from-emerald-500 to-green-600"
-            }`}>
-            Confirmer ✓
-          </button>
-        )}
-
-        {otpStage === "sent" && (
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
-            <div className="text-xs font-black text-indigo-800 mb-2">Saisissez le code OTP reçu par SMS</div>
-            <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mb-2">
-              ⚠️ Mode démonstration — aucune passerelle SMS réelle n'est encore connectée. N'importe quel code à 4 chiffres est accepté.
-            </div>
-            <input type="tel" inputMode="numeric" maxLength={6} value={otpValue}
-              onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ""))}
-              placeholder="• • • •" className="w-full text-center tracking-[0.5em] font-black text-xl bg-white border border-indigo-200 rounded-xl py-2.5 mb-2 outline-none" />
-            {otpError && <div className="text-xs text-rose-600 font-bold mb-2">{otpError}</div>}
-            <button onClick={verifyOtp} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black">Valider le code</button>
-          </div>
-        )}
-
-        {sent && (
-          <div className="w-full py-4 rounded-2xl font-black text-white text-lg shadow-lg flex items-center justify-center gap-2 bg-emerald-500">
-            <CheckCircle2 className="w-5 h-5" /> Confirmé ✓
-          </div>
-        )}
+        <ConfirmButton onConfirm={confirmContribution} label="Confirmer ✓"
+          className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600" />
       </div>
 
       {/* Historique */}
@@ -2043,32 +1623,8 @@ function CrowdfundPage() {
         <div className="flex items-center gap-2 mb-2"><TrendingUp className="w-6 h-6" /><div className="font-black text-lg">Financement Participatif</div></div>
         <p className="text-sm opacity-90">Plateforme pour investisseurs et agriculteurs.</p>
       </div>
-      <div className="space-y-3">
-        {[
-          { name: "Projet Anacarde Hambol",    target: 500000, raised: 310000, investors: 12, return: "12%", culture: "🥜 Anacarde" },
-          { name: "Irrigation Maïs Bouaké",    target: 200000, raised: 180000, investors: 8,  return: "10%", culture: "🌽 Maïs" },
-          { name: "Cacao Bio Daloa",            target: 800000, raised: 240000, investors: 5,  return: "15%", culture: "🍫 Cacao" },
-        ].map((proj, i) => (
-          <div key={i} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
-            <div className="flex items-start justify-between mb-2">
-              <div><div className="font-black text-stone-800">{proj.name}</div><div className="text-xs text-stone-500 mt-0.5">{proj.culture}</div></div>
-              <div className="bg-lime-100 text-lime-700 text-xs font-black rounded-full px-2 py-1">{proj.return} /an</div>
-            </div>
-            <div className="flex gap-4 text-xs text-stone-500 mb-2">
-              <span>👥 {proj.investors} investisseurs</span>
-              <span>🎯 {Math.round(proj.raised / proj.target * 100)}% financé</span>
-            </div>
-            <div className="h-2.5 bg-stone-100 rounded-full mb-1 overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-lime-400 to-emerald-500 rounded-full" style={{ width: `${Math.round(proj.raised / proj.target * 100)}%` }} />
-            </div>
-            <div className="flex justify-between text-xs font-semibold text-stone-600 mb-3">
-              <span>{proj.raised.toLocaleString("fr-FR")} F</span>
-              <span>sur {proj.target.toLocaleString("fr-FR")} F</span>
-            </div>
-            <button className="w-full py-2.5 bg-lime-600 text-white rounded-xl font-bold text-sm">Investir dans ce projet</button>
-          </div>
-        ))}
-      </div>
+      <ComingSoonNotice icon={TrendingUp} title="Vue projets pour bénéficiaires"
+        message="Le financement participatif de vos bons se suit déjà côté investisseurs — une vue dédiée pour les bénéficiaires arrive bientôt ici." />
     </div>
   );
 }
@@ -2981,6 +2537,11 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
 
   const totalInvested = myInvestments.reduce((sum, i) => sum + i.amount, 0);
   const activeBondCount = new Set(myInvestments.map((i) => i.creditId)).size;
+  const totalEstimatedReturn = myInvestments.reduce((sum, inv) => {
+    const credit = investmentCredits[inv.creditId];
+    return credit ? sum + Math.round(inv.amount * credit.interestRatePerMonth * credit.termMonths) : sum;
+  }, 0);
+  const roiPct = totalInvested > 0 ? (totalEstimatedReturn / totalInvested) * 100 : 0;
 
   const navItems = [
     { id: "apercu",   icon: Home,       label: "Accueil"  },
@@ -3168,43 +2729,19 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
           <div className="space-y-4">
             <h2 className="text-lg font-black text-stone-900">Mes rapports</h2>
             <div className="grid grid-cols-3 gap-2">
-              {[{ l:"Investi",    v:"80 000 F" },{ l:"Rendements", v:"9 000 F" },{ l:"ROI",v:"+11.2%" }].map((s,i)=>(
+              {[
+                { l: "Investi", v: `${totalInvested.toLocaleString("fr-FR")} F` },
+                { l: "Rendement estimé", v: `${totalEstimatedReturn.toLocaleString("fr-FR")} F` },
+                { l: "ROI estimé", v: totalInvested > 0 ? `+${roiPct.toFixed(1)}%` : "—" },
+              ].map((s,i)=>(
                 <div key={i} className="bg-white rounded-2xl p-3 border border-stone-100 shadow-sm text-center">
                   <div className="font-black text-stone-900 text-base">{s.v}</div>
                   <div className="text-[10px] text-stone-500 mt-0.5">{s.l}</div>
                 </div>
               ))}
             </div>
-            <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4">
-              <div className="font-bold text-stone-800 text-sm mb-3">Performance 6 mois</div>
-              <div className="flex items-end gap-1.5 h-24">
-                {[40,55,45,70,65,80].map((h,i)=>(
-                  <div key={i} className="flex-1 bg-gradient-to-t from-sky-500 to-indigo-400 rounded-t-lg opacity-80" style={{ height:`${h}%` }} />
-                ))}
-              </div>
-              <div className="flex justify-between text-[10px] text-stone-400 mt-2">
-                {["Jan","Fév","Mar","Avr","Mai","Jun"].map(m=><span key={m}>{m}</span>)}
-              </div>
-            </div>
-            <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-stone-50 font-bold text-stone-800 text-sm">Documents</div>
-              {[
-                { label:"Rapport S1 2026",           date:"25 juin 2026" },
-                { label:"Relevé de compte — Juin",   date:"28 juin 2026" },
-                { label:"Attestation investissement", date:"01 jan 2026"  },
-              ].map((d,i)=>(
-                <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-stone-50 last:border-0">
-                  <div className="w-9 h-9 bg-sky-50 rounded-xl flex items-center justify-center">
-                    <FileText className="w-4 h-4 text-sky-600" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-bold text-stone-800 text-sm">{d.label}</div>
-                    <div className="text-xs text-stone-400">{d.date}</div>
-                  </div>
-                  <button className="text-xs font-bold bg-sky-50 text-sky-600 border border-sky-200 rounded-lg px-2 py-1">PDF</button>
-                </div>
-              ))}
-            </div>
+            <ComingSoonNotice icon={BarChart2} title="Performance & documents"
+              message="Le suivi de performance dans le temps et les documents téléchargeables (relevés, attestations) arrivent bientôt." />
           </div>
         )}
 

@@ -1,4 +1,4 @@
-import { addDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, getDocs, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 import type { GeoPointLike, LossClaim } from "../types/firestore";
 
@@ -24,4 +24,9 @@ export async function getUserLossValueFcfa(userId: string): Promise<number> {
   const q = query(collection(db, LOSS_CLAIMS), where("userId", "==", userId));
   const snap = await getDocs(q);
   return snap.docs.reduce((sum, d) => sum + ((d.data() as LossClaim).estimatedValueFcfa ?? 0), 0);
+}
+
+export function subscribeToUserLossClaims(userId: string, onChange: (claims: LossClaim[]) => void) {
+  const q = query(collection(db, LOSS_CLAIMS), where("userId", "==", userId), orderBy("createdAt", "desc"));
+  return onSnapshot(q, (snap) => onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() } as LossClaim))));
 }
