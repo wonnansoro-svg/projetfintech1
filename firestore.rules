@@ -28,6 +28,7 @@ service cloud.firestore {
     }
     function isAdmin() { return isSignedIn() && myRole() == "admin"; }
     function isAgent() { return isSignedIn() && myRole() == "agent"; }
+    function isInvestor() { return isSignedIn() && myRole() == "investor"; }
 
     match /profiles/{uid} {
       // Lecture individuelle élargie aux profils "farmer" pour tout utilisateur connecté :
@@ -138,7 +139,9 @@ service cloud.firestore {
     match /bondInvestments/{id} {
       allow read: if isAdmin() || (isSignedIn() && (resource.data.investorId == request.auth.uid || resource.data.farmerId == request.auth.uid));
       allow list: if isSignedIn();
-      allow create: if isSignedIn()
+      // Resserré : seul un compte au rôle "investor" peut créer un paiement (pas juste
+      // n'importe quel utilisateur connecté qui se désignerait investorId == lui-même).
+      allow create: if isInvestor()
         && request.resource.data.investorId == request.auth.uid
         && request.resource.data.amount > 0
         && request.resource.data.status == "pending";

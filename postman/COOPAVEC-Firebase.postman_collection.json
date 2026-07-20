@@ -1,0 +1,311 @@
+{
+  "info": {
+    "name": "COOPAVEC — Tests règles Firebase (Firestore + Auth)",
+    "description": "Suite de tests des règles de sécurité `firestore.rules` de COOPAVEC, exécutés directement contre les API REST Firebase (sans passer par l'app React). Voir postman/README.md pour la mise en route.\n\nDossiers commençant par ⚠️ écrivent de vraies données — à exécuter uniquement avec des comptes de test dédiés, jamais avec de vrais bénéficiaires.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 - Auth (obtenir les tokens)",
+      "item": [
+        {
+          "name": "Connexion Farmer",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "const j = pm.response.json();",
+            "pm.environment.set('farmerIdToken', j.idToken);",
+            "pm.environment.set('farmerUid', j.localId);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{identityBase}}/accounts:signInWithPassword?key={{apiKey}}",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"email\": \"{{farmerEmail}}\",\n  \"password\": \"{{farmerPassword}}\",\n  \"returnSecureToken\": true\n}" }
+          }
+        },
+        {
+          "name": "Connexion Admin",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "const j = pm.response.json();",
+            "pm.environment.set('adminIdToken', j.idToken);",
+            "pm.environment.set('adminUid', j.localId);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{identityBase}}/accounts:signInWithPassword?key={{apiKey}}",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\",\n  \"returnSecureToken\": true\n}" }
+          }
+        },
+        {
+          "name": "Connexion Investisseur",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "const j = pm.response.json();",
+            "pm.environment.set('investorIdToken', j.idToken);",
+            "pm.environment.set('investorUid', j.localId);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{identityBase}}/accounts:signInWithPassword?key={{apiKey}}",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"email\": \"{{investorEmail}}\",\n  \"password\": \"{{investorPassword}}\",\n  \"returnSecureToken\": true\n}" }
+          }
+        },
+        {
+          "name": "Connexion Superviseur (agent)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "const j = pm.response.json();",
+            "pm.environment.set('agentIdToken', j.idToken);",
+            "pm.environment.set('agentUid', j.localId);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{identityBase}}/accounts:signInWithPassword?key={{apiKey}}",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"email\": \"{{agentEmail}}\",\n  \"password\": \"{{agentPassword}}\",\n  \"returnSecureToken\": true\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 - Profiles (lecture seule, sans risque)",
+      "item": [
+        {
+          "name": "Liste profils — non authentifié → doit échouer (403)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('403 PERMISSION_DENIED', () => pm.response.to.have.status(403));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{firestoreBase}}/profiles" }
+        },
+        {
+          "name": "Liste profils — en tant qu'admin → doit réussir (200)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));"
+          ] } }],
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminIdToken}}" }], "url": "{{firestoreBase}}/profiles" }
+        },
+        {
+          "name": "Liste profils — en tant que farmer → doit échouer (403)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('403 PERMISSION_DENIED', () => pm.response.to.have.status(403));"
+          ] } }],
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{farmerIdToken}}" }], "url": "{{firestoreBase}}/profiles" }
+        },
+        {
+          "name": "Mon profil — farmer lit son propre profil → doit réussir (200)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));"
+          ] } }],
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{farmerIdToken}}" }], "url": "{{firestoreBase}}/profiles/{{farmerUid}}" }
+        },
+        {
+          "name": "Profil admin — farmer lit le profil d'un admin → doit échouer (403)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('403 PERMISSION_DENIED', () => pm.response.to.have.status(403));"
+          ] } }],
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{farmerIdToken}}" }], "url": "{{firestoreBase}}/profiles/{{adminUid}}" }
+        }
+      ]
+    },
+    {
+      "name": "02 - Wallets (lecture seule, sans risque)",
+      "item": [
+        {
+          "name": "Mon wallet — farmer → doit réussir (200)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));"
+          ] } }],
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{farmerIdToken}}" }], "url": "{{firestoreBase}}/wallets/{{farmerUid}}" }
+        },
+        {
+          "name": "Wallet d'un admin — farmer → doit échouer (403)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('403 PERMISSION_DENIED', () => pm.response.to.have.status(403));"
+          ] } }],
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{farmerIdToken}}" }], "url": "{{firestoreBase}}/wallets/{{adminUid}}" }
+        }
+      ]
+    },
+    {
+      "name": "03 - Credits / Bons (négatifs sans risque)",
+      "item": [
+        {
+          "name": "Créer un bon — en tant que farmer (ancien flux) → doit échouer (403)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('403 PERMISSION_DENIED — seul l\\'admin génère un bon', () => pm.response.to.have.status(403));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{farmerIdToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "url": "{{firestoreBase}}/credits",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"fields\": {\n    \"userId\": {\"stringValue\": \"{{farmerUid}}\"},\n    \"status\": {\"stringValue\": \"pending\"},\n    \"investedAmount\": {\"integerValue\": \"0\"},\n    \"creditedAmount\": {\"integerValue\": \"0\"}\n  }\n}" }
+          }
+        },
+        {
+          "name": "Liste des bons — non authentifié → doit échouer (403)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('403 PERMISSION_DENIED', () => pm.response.to.have.status(403));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{firestoreBase}}/credits" }
+        },
+        {
+          "name": "Liste des bons — en tant qu'investisseur (marketplace) → doit réussir (200)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));"
+          ] } }],
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{investorIdToken}}" }], "url": "{{firestoreBase}}/credits" }
+        }
+      ]
+    },
+    {
+      "name": "⚠️ 04 - Cycle de vie complet d'un bon (écrit des données de test)",
+      "description": "Exécuter ces 4 requêtes DANS L'ORDRE (Postman Runner), uniquement avec des comptes de test dédiés (jamais un vrai bénéficiaire). La dernière requête nettoie le bon de test créé.",
+      "item": [
+        {
+          "name": "1. Admin génère un bon pour le farmer de test (1000 F)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "const j = pm.response.json();",
+            "pm.environment.set('testCreditId', j.name.split('/').pop());"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminIdToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "url": "{{firestoreBase}}/credits",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"fields\": {\n    \"userId\": {\"stringValue\": \"{{farmerUid}}\"},\n    \"createdBy\": {\"stringValue\": \"{{adminUid}}\"},\n    \"requestedAmount\": {\"integerValue\": \"1000\"},\n    \"approvedAmount\": {\"integerValue\": \"1000\"},\n    \"status\": {\"stringValue\": \"pending\"},\n    \"investedAmount\": {\"integerValue\": \"0\"},\n    \"creditedAmount\": {\"integerValue\": \"0\"},\n    \"interestRatePerMonth\": {\"doubleValue\": 0.03},\n    \"termMonths\": {\"integerValue\": \"6\"},\n    \"schedule\": {\"arrayValue\": {}},\n    \"calculationSnapshot\": {\"nullValue\": null},\n    \"rejectionReason\": {\"nullValue\": null},\n    \"requestedAt\": {\"integerValue\": \"1735689600000\"},\n    \"decidedAt\": {\"nullValue\": null},\n    \"decidedBy\": {\"nullValue\": null}\n  }\n}" }
+          }
+        },
+        {
+          "name": "2. Farmer approuve son bon (POSTMAN TEST — Wave)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK — le farmer peut approuver son propre bon en attente', () => pm.response.to.have.status(200));"
+          ] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{farmerIdToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "url": "{{firestoreBase}}/credits/{{testCreditId}}?updateMask.fieldPaths=status",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"fields\": {\n    \"status\": {\"stringValue\": \"approved\"}\n  }\n}" }
+          }
+        },
+        {
+          "name": "3. Investisseur paie 500 F sur le bon",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK — investissement sur un bon approuvé', () => pm.response.to.have.status(200));"
+          ] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{investorIdToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "url": "{{firestoreBase}}/credits/{{testCreditId}}?updateMask.fieldPaths=investedAmount",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"fields\": {\n    \"investedAmount\": {\"integerValue\": \"500\"}\n  }\n}" }
+          }
+        },
+        {
+          "name": "4. Nettoyage — admin supprime le bon de test",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK — nettoyage effectué', () => pm.response.to.have.status(200));"
+          ] } }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminIdToken}}" }],
+            "url": "{{firestoreBase}}/credits/{{testCreditId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - BondInvestments (négatifs sans risque)",
+      "item": [
+        {
+          "name": "Valider un paiement — en tant qu'investisseur (non-admin) → doit échouer (403)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('403 PERMISSION_DENIED — seul l\\'admin valide un paiement', () => pm.response.to.have.status(403));"
+          ] } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{investorIdToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "url": "{{firestoreBase}}/bondInvestments/UN_ID_QUELCONQUE?updateMask.fieldPaths=status",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"fields\": {\n    \"status\": {\"stringValue\": \"approved\"}\n  }\n}" }
+          }
+        },
+        {
+          "name": "Créer un investissement — en tant que farmer (rôle non-investisseur) → doit échouer (403)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "// Règle resserrée : bondInvestments.create exige maintenant isInvestor()",
+            "// en plus de investorId == auth.uid. Un farmer ne peut plus se créer un",
+            "// faux paiement 'pending' à son propre nom.",
+            "pm.test('403 PERMISSION_DENIED — seul le rôle investor peut créer un paiement', () => pm.response.to.have.status(403));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{farmerIdToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "url": "{{firestoreBase}}/bondInvestments",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"fields\": {\n    \"creditId\": {\"stringValue\": \"test-non-existant\"},\n    \"investorId\": {\"stringValue\": \"{{farmerUid}}\"},\n    \"farmerId\": {\"stringValue\": \"{{farmerUid}}\"},\n    \"amount\": {\"integerValue\": \"1\"},\n    \"status\": {\"stringValue\": \"pending\"},\n    \"reviewedBy\": {\"nullValue\": null},\n    \"createdAt\": {\"integerValue\": \"1735689600000\"}\n  }\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - PhoneIndex (lecture, sans risque)",
+      "item": [
+        {
+          "name": "Lire un numéro par sa clé — doit être AUTORISÉ (200 ou 404, jamais 403)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Pas un refus de règle (code != 403)', () => pm.expect(pm.response.code).to.not.equal(403));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{firestoreBase}}/phoneIndex/{{testPhoneDigits}}" }
+        },
+        {
+          "name": "Lister tous les numéros → doit échouer (403, anti-énumération)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('403 PERMISSION_DENIED', () => pm.response.to.have.status(403));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{firestoreBase}}/phoneIndex" }
+        }
+      ]
+    },
+    {
+      "name": "07 - Contributions & SusuGroups (négatifs sans risque)",
+      "item": [
+        {
+          "name": "Créer une cotisation pour un AUTRE utilisateur — en tant que farmer → doit échouer (403)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('403 PERMISSION_DENIED', () => pm.response.to.have.status(403));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{farmerIdToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "url": "{{firestoreBase}}/contributions",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"fields\": {\n    \"userId\": {\"stringValue\": \"{{adminUid}}\"},\n    \"amount\": {\"integerValue\": \"1500\"},\n    \"status\": {\"stringValue\": \"confirmed\"}\n  }\n}" }
+          }
+        },
+        {
+          "name": "Créer un groupe Bokanmin — en tant que farmer → doit échouer (403)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('403 PERMISSION_DENIED — réservé admin/superviseur', () => pm.response.to.have.status(403));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{farmerIdToken}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "url": "{{firestoreBase}}/susuGroups",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"fields\": {\n    \"name\": {\"stringValue\": \"TEST\"},\n    \"cooperativeId\": {\"stringValue\": \"TEST\"}\n  }\n}" }
+          }
+        }
+      ]
+    }
+  ]
+}
