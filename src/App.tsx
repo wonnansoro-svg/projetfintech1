@@ -17,7 +17,11 @@ import AddParcelForm from "./components/AddParcelForm";
 import IdentityQRCode from "./components/IdentityQRCode";
 import { getCurrentLocation, type GeoPoint } from "./lib/geolocation";
 import { subscribeToGuaranteeFund, subscribeToCreditSettings, getGuaranteeFund, getCreditSettings } from "./services/fundService";
-import { recordContribution, computeWeeklyStreak, getContributionSplitTotals, getContributionsTotalForUsers } from "./services/contributionService";
+import {
+  recordContribution, computeWeeklyStreak, getContributionSplitTotals, getContributionsTotalForUsers,
+  submitContributionRequest, confirmContributionRequest, rejectContributionRequest,
+  subscribeToPendingContributions, subscribeToUserContributions,
+} from "./services/contributionService";
 import { subscribeToWallet, getWallet } from "./services/walletService";
 import {
   subscribeToUserCredits, subscribeToPendingCredits, countActiveCredits,
@@ -51,7 +55,7 @@ import MemberDetailPanel from "./components/MemberDetailPanel";
 import { listRecentTransactions } from "./services/transactionService";
 import { getAgriculturalAdvice } from "./lib/weather";
 import { useBackGuard } from "./lib/backGuard";
-import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction, SusuGroup, BondInvestment, LossClaim } from "./types/firestore";
+import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction, SusuGroup, BondInvestment, LossClaim, Contribution } from "./types/firestore";
 
 // ==================== COMPOSANTS RÉUTILISABLES ====================
 
@@ -710,6 +714,7 @@ function SusuPage() {
   const [myContribution, setMyContribution] = useState(0);
   const [balance, setBalance] = useState(0);
   const [streak, setStreak] = useState(0);
+  const [myContributions, setMyContributions] = useState<Contribution[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -717,18 +722,24 @@ function SusuPage() {
     return () => unsubscribe();
   }, [user?.id]);
 
-  const refreshStreak = () => { if (user) computeWeeklyStreak(user.id).then(setStreak); };
-  useEffect(refreshStreak, [user?.id]);
+  useEffect(() => {
+    if (!user) return;
+    const u = subscribeToUserContributions(user.id, setMyContributions);
+    return () => u();
+  }, [user?.id]);
 
-  const confirmContribution = async () => {
+  useEffect(() => { if (user) computeWeeklyStreak(user.id).then(setStreak); }, [user?.id]);
+
+  const pendingContributions = myContributions.filter((c) => c.status === "pending");
+
+  const sendContribution = async () => {
     if (!user) return;
     try {
-      await recordContribution(user.id, amount, "guarantee_fund");
-      pushToast({ tone: "success", title: "Cotisation enregistrée !", message: `${amount.toLocaleString("fr-FR")} F` });
-      refreshStreak();
+      await submitContributionRequest(user.id, amount, "guarantee_fund");
+      pushToast({ tone: "success", title: "Cotisation envoyée !", message: "En attente de validation par l'admin (sous 24h)." });
     } catch (err) {
-      console.error("Erreur cotisation :", err);
-      pushToast({ tone: "warn", title: "Échec de la cotisation", message: "Réessayez, vérifiez votre connexion." });
+      console.error("Erreur envoi cotisation :", err);
+      pushToast({ tone: "warn", title: "Échec de l'envoi", message: "Réessayez, vérifiez votre connexion." });
       throw err;
     }
   };
@@ -770,9 +781,29 @@ function SusuPage() {
         <div className="mb-3">
           <WavePaymentBanner amount={amount} />
         </div>
-        <ConfirmButton onConfirm={confirmContribution} label="Confirmer ✓"
+        <ConfirmButton onConfirm={sendContribution} label="Envoyer ✓" successLabel="✓ Envoyé !"
           className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600" />
+        <p className="text-[11px] text-stone-400 text-center mt-2">
+          Après paiement sur Wave, un admin confirme votre cotisation sous 24h — votre solde sera crédité à ce moment-là.
+        </p>
       </div>
+
+      {pendingContributions.length > 0 && (
+        <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100 mt-4">
+          <div className="font-black text-amber-900 text-sm mb-2">⏳ En attente de validation</div>
+          <div className="space-y-2">
+            {pendingContributions.map((c) => (
+              <div key={c.id} className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5 border border-amber-100">
+                <div>
+                  <div className="font-bold text-stone-800 text-sm">{c.amount.toLocaleString("fr-FR")} F</div>
+                  <div className="text-xs text-stone-400">Envoyé le {new Date(c.createdAt).toLocaleDateString("fr-FR")}</div>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">En attente</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1535,15 +1566,24 @@ function PaymentsPage() {
   const { balance, transactions, pushToast } = useApp();
   const { user } = useAuth();
   const [amount, setAmount] = useState(1000);
+  const [myContributions, setMyContributions] = useState<Contribution[]>([]);
 
-  const confirmContribution = async () => {
+  useEffect(() => {
+    if (!user) return;
+    const u = subscribeToUserContributions(user.id, setMyContributions);
+    return () => u();
+  }, [user?.id]);
+
+  const pendingContributions = myContributions.filter((c) => c.status === "pending");
+
+  const sendContribution = async () => {
     if (!user || amount <= 0) return;
     try {
-      await recordContribution(user.id, amount, "guarantee_fund", "Cotisation libre — Wave");
-      pushToast({ tone: "success", title: "Cotisation enregistrée !", message: `${amount.toLocaleString("fr-FR")} F` });
+      await submitContributionRequest(user.id, amount, "guarantee_fund");
+      pushToast({ tone: "success", title: "Cotisation envoyée !", message: "En attente de validation par l'admin (sous 24h)." });
     } catch (err) {
-      console.error("Erreur cotisation libre :", err);
-      pushToast({ tone: "warn", title: "Échec de la cotisation", message: "Réessayez, vérifiez votre connexion." });
+      console.error("Erreur envoi cotisation libre :", err);
+      pushToast({ tone: "warn", title: "Échec de l'envoi", message: "Réessayez, vérifiez votre connexion." });
       throw err;
     }
   };
@@ -1581,9 +1621,29 @@ function PaymentsPage() {
           <WavePaymentBanner amount={amount} />
         </div>
 
-        <ConfirmButton onConfirm={confirmContribution} label="Confirmer ✓"
+        <ConfirmButton onConfirm={sendContribution} label="Envoyer ✓" successLabel="✓ Envoyé !"
           className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600" />
+        <p className="text-[11px] text-stone-400 text-center mt-2">
+          Après paiement sur Wave, un admin confirme votre cotisation sous 24h — votre solde sera crédité à ce moment-là.
+        </p>
       </div>
+
+      {pendingContributions.length > 0 && (
+        <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100 mb-4">
+          <div className="font-black text-amber-900 text-sm mb-2">⏳ En attente de validation</div>
+          <div className="space-y-2">
+            {pendingContributions.map((c) => (
+              <div key={c.id} className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5 border border-amber-100">
+                <div>
+                  <div className="font-bold text-stone-800 text-sm">{c.amount.toLocaleString("fr-FR")} F</div>
+                  <div className="text-xs text-stone-400">Envoyé le {new Date(c.createdAt).toLocaleDateString("fr-FR")}</div>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">En attente</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Historique */}
       <div className="animate-fade-up delay-2 bg-white rounded-2xl p-4 shadow-sm border border-stone-200">
@@ -1815,6 +1875,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
   const [activeCreditsCount, setActiveCreditsCount] = useState(0);
   const [pendingCredits, setPendingCredits] = useState<Credit[]>([]);
   const [pendingInvestments, setPendingInvestments] = useState<BondInvestment[]>([]);
+  const [pendingContributions, setPendingContributions] = useState<Contribution[]>([]);
   const [recentTxs, setRecentTxs] = useState<Transaction[]>([]);
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [profilesLoading, setProfilesLoading] = useState(true);
@@ -1833,6 +1894,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
   useEffect(() => { const u = subscribeToGuaranteeFund(setFund); return () => u(); }, []);
   useEffect(() => { const u = subscribeToPendingCredits(setPendingCredits); return () => u(); }, []);
   useEffect(() => { const u = subscribeToPendingBondInvestments(setPendingInvestments); return () => u(); }, []);
+  useEffect(() => { const u = subscribeToPendingContributions(setPendingContributions); return () => u(); }, []);
   useEffect(() => { countActiveCredits().then(setActiveCreditsCount); }, [pendingInvestments]);
   useEffect(() => { listRecentTransactions(8).then((t) => { setRecentTxs(t); setTxsLoading(false); }); }, []);
   useEffect(() => { getContributionSplitTotals().then(setSplitTotals); }, []);
@@ -1855,6 +1917,19 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
       await reviewBondInvestment(investmentId, user.id, action);
     } catch (err) {
       console.error("Erreur revue investissement :", err);
+    } finally {
+      setDecidingId(null);
+    }
+  };
+
+  const reviewContribution = async (contributionId: string, action: "confirm" | "reject") => {
+    if (!user) return;
+    setDecidingId(contributionId);
+    try {
+      if (action === "confirm") await confirmContributionRequest(contributionId, user.id);
+      else await rejectContributionRequest(contributionId, user.id, "Paiement Wave introuvable — contactez votre superviseur.");
+    } catch (err) {
+      console.error("Erreur revue cotisation :", err);
     } finally {
       setDecidingId(null);
     }
@@ -2017,6 +2092,31 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
             </div>
 
             <div className="space-y-3">
+              <h3 className="text-sm font-black text-stone-700">Cotisations en attente de validation</h3>
+              {pendingContributions.length === 0 && (
+                <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+                  <Wallet className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                  <div className="text-sm text-stone-500 font-medium">Aucune cotisation en attente</div>
+                </div>
+              )}
+              {pendingContributions.map((c) => (
+                <div key={c.id} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-stone-800 text-sm">{nameByUid.get(c.userId) ?? c.userId}</span>
+                    <span className="text-[10px] text-stone-400">{new Date(c.createdAt).toLocaleDateString("fr-FR")}</span>
+                  </div>
+                  <div className="font-black text-stone-900 text-lg">{c.amount.toLocaleString("fr-FR")} F</div>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={() => reviewContribution(c.id, "reject")} disabled={decidingId === c.id}
+                      className="flex-1 py-2.5 bg-red-50 text-red-600 rounded-xl font-bold text-xs disabled:opacity-50">Rejeter</button>
+                    <button onClick={() => reviewContribution(c.id, "confirm")} disabled={decidingId === c.id}
+                      className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs disabled:opacity-50">Confirmer & créditer</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-3">
               <h3 className="text-sm font-black text-stone-700">Paiements investisseurs en attente de validation</h3>
               {pendingInvestments.length === 0 && (
                 <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
@@ -2144,6 +2244,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
       )}
       {showNotifications && (
         <AdminNotificationsPanel pendingInvestmentsCount={pendingInvestments.length} pendingBondsCount={pendingCredits.length}
+          pendingContributionsCount={pendingContributions.length}
           onClose={() => setShowNotifications(false)} />
       )}
       {showSecurityPanel && (
@@ -2250,22 +2351,33 @@ function GenerateBondModal({ adminId, farmers, onClose, onDone }: {
   );
 }
 
-function AdminNotificationsPanel({ pendingInvestmentsCount, pendingBondsCount, onClose }: {
-  pendingInvestmentsCount: number; pendingBondsCount: number; onClose: () => void;
+function AdminNotificationsPanel({ pendingInvestmentsCount, pendingBondsCount, pendingContributionsCount, onClose }: {
+  pendingInvestmentsCount: number; pendingBondsCount: number; pendingContributionsCount: number; onClose: () => void;
 }) {
   useBackGuard(true, onClose);
   const { user } = useAuth();
-  const [notifs, setNotifs] = useState<AppNotification[]>([]);
+  const [personalNotifs, setPersonalNotifs] = useState<AppNotification[]>([]);
+  const [broadcastNotifs, setBroadcastNotifs] = useState<AppNotification[]>([]);
 
   useEffect(() => {
     if (!user) return;
-    const u = subscribeToNotifications(user.id, setNotifs);
+    const u = subscribeToNotifications(user.id, setPersonalNotifs);
     return () => u();
   }, [user?.id]);
 
+  // Canal diffusé "admins" — évite d'avoir à énumérer les uid de tous les admins côté client.
   useEffect(() => {
-    if (user && notifs.some((n) => !n.read)) markAllRead(user.id);
-  }, [user?.id, notifs.length]);
+    const u = subscribeToNotifications("admins", setBroadcastNotifs);
+    return () => u();
+  }, []);
+
+  const notifs = [...personalNotifs, ...broadcastNotifs].sort((a, b) => b.createdAt - a.createdAt);
+
+  useEffect(() => {
+    if (!user) return;
+    if (personalNotifs.some((n) => !n.read)) markAllRead(user.id);
+    if (broadcastNotifs.some((n) => !n.read)) markAllRead("admins");
+  }, [user?.id, personalNotifs.length, broadcastNotifs.length]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -2275,7 +2387,11 @@ function AdminNotificationsPanel({ pendingInvestmentsCount, pendingBondsCount, o
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100 text-center">
+              <div className="text-xl font-black text-emerald-700">{pendingContributionsCount}</div>
+              <div className="text-[10px] text-emerald-600 font-semibold">Cotisations à valider</div>
+            </div>
             <div className="bg-amber-50 rounded-xl p-3 border border-amber-100 text-center">
               <div className="text-xl font-black text-amber-700">{pendingInvestmentsCount}</div>
               <div className="text-[10px] text-amber-600 font-semibold">Paiements à valider</div>
@@ -2922,7 +3038,7 @@ function SupervisorSpace({ onLogout }: { onLogout: () => void }) {
   const confirmCollection = async () => {
     if (!selected) return;
     try {
-      await recordContribution(selected.uid, amount, "guarantee_fund", "Cotisation Bokanmin — collectée par agent (Wave)");
+      await recordContribution(selected.uid, amount, "guarantee_fund", "Cotisation Bokanmin — collectée par agent (Wave)", profile?.uid);
       pushToast({ tone: "success", title: "Cotisation enregistrée !", message: `${selected.fullName} · ${amount.toLocaleString("fr-FR")} F` });
     } catch (err) {
       console.error("Erreur collecte cotisation :", err);

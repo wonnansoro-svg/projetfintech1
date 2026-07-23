@@ -73,9 +73,14 @@ service cloud.firestore {
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow list: if isAdmin() || isAgent(); // le superviseur additionne les cotisations de ses bénéficiaires (requête `in`)
       allow create: if isSignedIn()
-        && (request.resource.data.userId == request.auth.uid || isAdmin() || isAgent())
         && request.resource.data.amount > 0
-        && request.resource.data.status == "confirmed";
+        && (
+          // Libre-service (Bokanmin / paiement libre par Wave) : uniquement en attente, jamais auto-confirmée.
+          (request.resource.data.userId == request.auth.uid && request.resource.data.status == "pending")
+          // Collecte en personne par un admin/superviseur, déjà confirmée sur place.
+          || ((isAdmin() || isAgent()) && request.resource.data.status == "confirmed")
+        );
+      // Seul l'admin confirme/rejette une cotisation en attente (et crédite le solde).
       allow update, delete: if isAdmin();
     }
 
@@ -169,8 +174,10 @@ service cloud.firestore {
     match /notifications/{id} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow list: if isAdmin() || isSignedIn();
-      // Émises par une action admin (décision de crédit...) pour un autre utilisateur.
-      allow create: if isAdmin();
+      // Émises par une action admin (décision de crédit...) pour un autre utilisateur,
+      // ou par n'importe quel utilisateur connecté vers le canal diffusé "admins"
+      // (ex. nouvelle cotisation à valider) — contenu informatif, pas d'accès financier.
+      allow create: if isAdmin() || (isSignedIn() && request.resource.data.userId == "admins");
       // Le bénéficiaire ne peut que marquer ses propres notifications comme lues.
       allow update: if isAdmin()
         || (isOwner(resource.data.userId)

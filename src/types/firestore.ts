@@ -89,6 +89,7 @@ export interface SusuGroupMember {
 }
 
 export type ContributionKind = "susu" | "guarantee_fund";
+export type ContributionStatus = "pending" | "confirmed" | "rejected";
 
 export interface Contribution {
   id: string;
@@ -100,7 +101,15 @@ export interface Contribution {
   /** Part frais de gestion de la coopérative — visible admin uniquement, n'alimente pas le fonds de garantie. */
   managementFeePart: number;
   kind: ContributionKind;
-  status: "confirmed";
+  /**
+   * "pending" = cotisation libre-service (Bokanmin, paiement Wave) envoyée par le
+   * bénéficiaire, en attente de validation admin — aucun mouvement d'argent tant que
+   * "confirmed". "confirmed" direct = collecte en personne par admin/superviseur
+   * (déjà validée sur place).
+   */
+  status: ContributionStatus;
+  confirmedAt: number | null;
+  confirmedBy: string | null;
   createdAt: number;
 }
 

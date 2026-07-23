@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { X, Phone, MapPin, Building2, ShieldCheck, Power, CheckCircle2, Loader } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 import { subscribeToProfile, updateProfile } from "../services/profileService";
 import { subscribeToParcelsByOwner } from "../services/parcelService";
 import { subscribeToUserCredits } from "../services/creditService";
@@ -23,6 +24,7 @@ export default function MemberDetailPanel({ uid, onClose, variant = "admin", all
   canDeactivate?: boolean;
   canCollect?: boolean;
 }) {
+  const { user } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tab, setTab] = useState<"profil" | "activite" | "cotisation" | "droits">("profil");
   const [parcels, setParcels] = useState<Parcel[]>([]);
@@ -49,7 +51,7 @@ export default function MemberDetailPanel({ uid, onClose, variant = "admin", all
     if (amount <= 0) return;
     setCashSaving(true);
     try {
-      await recordContribution(uid, amount, "guarantee_fund", "Cotisation espèces — saisie par l'agent");
+      await recordContribution(uid, amount, "guarantee_fund", "Cotisation espèces — saisie par l'agent", user?.id);
       setCashDone(true);
       setTimeout(() => setCashDone(false), 2000);
     } finally {
