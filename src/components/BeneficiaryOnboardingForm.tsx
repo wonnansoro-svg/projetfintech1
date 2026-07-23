@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { User, Phone, MapPin, Building2, Loader, CheckCircle2, AlertCircle } from "lucide-react";
 import { createProfile } from "../services/profileService";
+import { phoneFromSyntheticEmail } from "../lib/phoneAuth";
 import type { Crop } from "../types/firestore";
 
 const CROPS: { key: Crop; label: string; emoji: string }[] = [
@@ -16,7 +17,10 @@ export default function BeneficiaryOnboardingForm({ uid, email, onDone }: {
   uid: string; email: string | null; onDone: () => void;
 }) {
   const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
+  // Pré-rempli avec le numéro utilisé à l'inscription (déduit de l'email synthétique
+  // "{digits}@coopavec.local") pour que ce soit exactement le même numéro qui finisse
+  // dans phoneIndex — sinon la connexion par téléphone échouerait plus tard si un chiffre diffère.
+  const [phone, setPhone] = useState(() => phoneFromSyntheticEmail(email));
   const [village, setVillage] = useState("");
   const [region, setRegion] = useState("");
   const [cooperativeId, setCooperativeId] = useState("");
@@ -86,10 +90,11 @@ export default function BeneficiaryOnboardingForm({ uid, email, onDone }: {
             <label className="block text-sm font-semibold text-stone-700 mb-1.5">Téléphone</label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-              <input value={phone} onChange={(e) => setPhone(e.target.value)}
+              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
                 className="w-full pl-9 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-sm"
                 placeholder="+225 07 00 00 00 00" required />
             </div>
+            <p className="text-[11px] text-stone-400 mt-1">C'est ce numéro qui vous servira à vous reconnecter — vérifiez qu'il est correct.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
