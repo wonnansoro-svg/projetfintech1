@@ -29,8 +29,21 @@ export async function getProfile(uid: string): Promise<Profile | null> {
   return snap.exists() ? (snap.data() as Profile) : null;
 }
 
+/**
+ * Le profil pilote le routage par rôle (admin/investor/agent/farmer) — des
+ * arbres d'interface entièrement différents. Le cache local persistant
+ * (`firebase.ts`, activé pour le hors-ligne sur le terrain) peut renvoyer une
+ * version PÉRIMÉE de ce document dès la première réponse `onSnapshot` (ex. un
+ * compte promu admin en console après avoir été mis en cache sur cet
+ * appareil en tant que "farmer") — le serveur corrige ensuite avec un second
+ * événement, ce qui produit un flash visible vers le mauvais espace. Tant
+ * qu'on est en ligne, on ignore ce premier instantané "cache seul" et on
+ * attend la confirmation serveur ; hors-ligne, on l'utilise quand même
+ * (mieux vaut une donnée peut-être légèrement ancienne que rien).
+ */
 export function subscribeToProfile(uid: string, onChange: (profile: Profile | null) => void) {
-  return onSnapshot(doc(db, PROFILES, uid), (snap) => {
+  return onSnapshot(doc(db, PROFILES, uid), { includeMetadataChanges: true }, (snap) => {
+    if (snap.metadata.fromCache && navigator.onLine) return;
     onChange(snap.exists() ? (snap.data() as Profile) : null);
   });
 }
