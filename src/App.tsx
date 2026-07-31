@@ -7,7 +7,7 @@ import {
   Recycle, FileText, Camera, BarChart2, CreditCard, Building2,
   Package, BadgeCheck, ChevronRight, Star, TrendingUp, Banknote,
   LogOut, Settings, Bell, PieChart, Activity, X, UserPlus,
-  UsersRound, Plus, Pencil, Trash2, GraduationCap, Wrench, ShoppingCart, BookOpen,
+  UsersRound, Plus, Pencil, Trash2, GraduationCap, Wrench, ShoppingCart, BookOpen, Volume2,
 } from "lucide-react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -50,6 +50,9 @@ import {
   approveEquipmentRequest, rejectEquipmentRequest,
 } from "./services/equipmentService";
 import { estimateCreditCeiling } from "./services/creditService";
+import { speak } from "./lib/speech";
+import BigConfirmation from "./components/BigConfirmation";
+import IconGridPicker from "./components/IconGridPicker";
 import type {
   MarketplaceListing, MarketplaceOrder, TrainingModule, TrainingProgress,
   EquipmentCatalogItem, EquipmentRequest,
@@ -102,13 +105,13 @@ function Tile({ emoji, label, sub, onClick, color = "green", badge, size = "lg" 
   };
   return (
     <button onClick={onClick}
-      className={`relative flex flex-col justify-between text-white rounded-2xl shadow active:scale-95 transition-transform p-3.5 min-h-[90px] ${COLORS[color] ?? COLORS.green}`}>
+      className={`relative flex flex-col justify-between text-white rounded-2xl shadow active:scale-95 transition-transform p-3.5 min-h-[104px] ${COLORS[color] ?? COLORS.green}`}>
       {badge !== undefined && (
         <span className="absolute top-2 right-2 bg-white text-rose-600 text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow">
           {badge}
         </span>
       )}
-      <span className="text-2xl leading-none">{emoji}</span>
+      <span className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center text-4xl leading-none">{emoji}</span>
       <div>
         <div className="text-sm font-black leading-tight">{label}</div>
         {sub && <div className="text-[10px] opacity-80 mt-0.5 leading-tight">{sub}</div>}
@@ -238,8 +241,16 @@ function LoginPage() {
               </button>
             ))}
           </div>
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-green-600 rounded-2xl mb-3 shadow-lg">
+          <div className="relative inline-flex items-center justify-center w-14 h-14 bg-green-600 rounded-2xl mb-3 shadow-lg">
             <Leaf className="w-7 h-7 text-white" />
+            <button type="button"
+              onClick={() => speak(isLogin
+                ? "Pour vous connecter, entrez votre numéro de téléphone ou votre email, puis votre mot de passe, et appuyez sur Se connecter."
+                : "Pour vous inscrire, entrez votre numéro de téléphone ou votre email, choisissez un mot de passe, et appuyez sur S'inscrire.")}
+              className="absolute -bottom-2 -right-2 w-7 h-7 rounded-full bg-white border border-stone-200 shadow flex items-center justify-center text-emerald-600"
+              aria-label="Écouter les instructions">
+              <Volume2 className="w-3.5 h-3.5" />
+            </button>
           </div>
           <h1 className="text-2xl font-black text-stone-900 tracking-tight">COOPAVEC</h1>
           <p className="text-stone-500 text-xs mt-0.5">AgriFinance Pay · Côte d'Ivoire 🇨🇮</p>
@@ -455,7 +466,7 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
 function IdentityPage({ onLogout }: { onLogout?: () => void }) {
   const [tab, setTab] = useState<"profil" | "kyc" | "gps">("profil");
   const { user, profile } = useAuth();
-  const { pushToast, textScale, setTextScale } = useApp();
+  const { pushToast, textScale, setTextScale, voiceEnabled, setVoiceEnabled } = useApp();
   const [gps, setGps] = useState<GeoPoint | null>(null);
   const [gpsError, setGpsError] = useState("");
   const [locating, setLocating] = useState(false);
@@ -556,6 +567,17 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Volume2 className="w-4 h-4 text-stone-500" />
+              <div className="text-xs text-stone-500 font-semibold">Lecture audio automatique</div>
+            </div>
+            <button onClick={() => setVoiceEnabled(!voiceEnabled)}
+              className={`w-12 h-7 rounded-full transition-colors relative ${voiceEnabled ? "bg-emerald-500" : "bg-stone-200"}`}>
+              <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${voiceEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
+            </button>
           </div>
 
           <button onClick={() => setShowTour(true)}
@@ -760,7 +782,7 @@ function SusuPage() {
     if (!user) return;
     try {
       await submitContributionRequest(user.id, amount, "guarantee_fund");
-      pushToast({ tone: "success", title: "Cotisation envoyée !", message: "En attente de validation par l'admin (sous 24h)." });
+      pushToast({ tone: "success", big: true, title: "Cotisation envoyée !", message: "En attente de validation par l'admin (sous 24h)." });
     } catch (err) {
       console.error("Erreur envoi cotisation :", err);
       pushToast({ tone: "warn", title: "Échec de l'envoi", message: "Réessayez, vérifiez votre connexion." });
@@ -888,10 +910,10 @@ function CreditPage() {
     try {
       if (action === "approve") {
         await approveBondByBeneficiary(creditId, user.id);
-        pushToast({ tone: "success", title: "Bon approuvé !", message: "Il est maintenant visible par les investisseurs." });
+        pushToast({ tone: "success", big: true, title: "Bon approuvé !", message: "Il est maintenant visible par les investisseurs." });
       } else {
         await rejectBondByBeneficiary(creditId, user.id, "Refusé par le bénéficiaire.");
-        pushToast({ tone: "info", title: "Bon refusé", message: "" });
+        pushToast({ tone: "info", big: true, title: "Bon refusé", message: "" });
       }
     } catch (err) {
       console.error("Erreur décision bon :", err);
@@ -1423,8 +1445,12 @@ function MarketplacePage() {
   const [crop, setCrop] = useState<Crop>("cacao");
   const [quantityKg, setQuantityKg] = useState(0);
   const [pricePerKg, setPricePerKg] = useState(0);
-  const [description, setDescription] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [otherNote, setOtherNote] = useState("");
+  const [showOtherNote, setShowOtherNote] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const toggleTag = (tag: string) => setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
 
   useEffect(() => {
     if (!user) return;
@@ -1437,9 +1463,10 @@ function MarketplacePage() {
     if (!user || quantityKg <= 0 || pricePerKg <= 0) return;
     setSaving(true);
     try {
+      const description = [...tags, otherNote.trim()].filter(Boolean).join(" · ");
       await createListing(user.id, { crop, quantityKg, pricePerKgFcfa: pricePerKg, description });
-      pushToast({ tone: "success", title: "Récolte publiée !", message: "Votre annonce est visible par la coopérative." });
-      setShowForm(false); setQuantityKg(0); setPricePerKg(0); setDescription("");
+      pushToast({ tone: "success", big: true, title: "Récolte publiée !", message: "Votre annonce est visible par la coopérative." });
+      setShowForm(false); setQuantityKg(0); setPricePerKg(0); setTags([]); setOtherNote(""); setShowOtherNote(false);
     } catch (err) {
       console.error("Erreur publication annonce :", err);
       pushToast({ tone: "warn", title: "Échec", message: "Réessayez." });
@@ -1471,11 +1498,9 @@ function MarketplacePage() {
       {showForm && (
         <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-4 space-y-3">
           <div>
-            <label className="block text-xs font-semibold text-stone-600 mb-1">Culture</label>
-            <select value={crop} onChange={(e) => setCrop(e.target.value as Crop)}
-              className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm font-semibold">
-              {CROPS.map((c) => <option key={c.key} value={c.key}>{c.emoji} {c.label}</option>)}
-            </select>
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">Culture</label>
+            <IconGridPicker columns={5} value={crop} onChange={setCrop}
+              options={CROPS.map((c) => ({ value: c.key, emoji: c.emoji, label: c.label }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1490,9 +1515,23 @@ function MarketplacePage() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-stone-600 mb-1">Description (optionnel)</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
-              className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">Précisions (optionnel)</label>
+            <div className="flex flex-wrap gap-2">
+              {[{ key: "🌿 Bio", label: "🌿 Bio" }, { key: "☀️ Séché", label: "☀️ Séché" }, { key: "🆕 Frais", label: "🆕 Frais" }, { key: "📦 Prêt au transport", label: "📦 Prêt" }].map((t) => (
+                <button key={t.key} type="button" onClick={() => toggleTag(t.key)}
+                  className={`px-3 py-2 rounded-full text-xs font-bold border-2 ${tags.includes(t.key) ? "bg-emerald-50 border-emerald-500 text-emerald-700" : "bg-stone-50 border-stone-200 text-stone-600"}`}>
+                  {t.label}
+                </button>
+              ))}
+              <button type="button" onClick={() => setShowOtherNote((v) => !v)}
+                className={`px-3 py-2 rounded-full text-xs font-bold border-2 ${showOtherNote ? "bg-emerald-50 border-emerald-500 text-emerald-700" : "bg-stone-50 border-stone-200 text-stone-600"}`}>
+                ✍️ Autre
+              </button>
+            </div>
+            {showOtherNote && (
+              <textarea value={otherNote} onChange={(e) => setOtherNote(e.target.value)} rows={2} placeholder="Précision libre"
+                className="w-full mt-2 px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+            )}
           </div>
           {quantityKg > 0 && pricePerKg > 0 && (
             <div className="text-xs text-orange-700 font-semibold">Valeur estimée : {(quantityKg * pricePerKg).toLocaleString("fr-FR")} F</div>
@@ -1622,7 +1661,7 @@ function CarbonPage() {
     if (!user || redeemAmount <= 0) return;
     try {
       await redeemCarbonCredits(user.id, redeemAmount, carbonCredits);
-      pushToast({ tone: "success", title: "Prime carbone versée !", message: `${(redeemAmount * CARBON_CREDIT_PRICE_FCFA).toLocaleString("fr-FR")} F` });
+      pushToast({ tone: "success", big: true, title: "Prime carbone versée !", message: `${(redeemAmount * CARBON_CREDIT_PRICE_FCFA).toLocaleString("fr-FR")} F` });
     } catch (err) {
       console.error("Erreur rachat crédits carbone :", err);
       pushToast({ tone: "warn", title: "Échec", message: err instanceof Error ? err.message : "Réessayez." });
@@ -1767,7 +1806,8 @@ function EquipmentPage() {
   const [equipmentLabel, setEquipmentLabel] = useState("");
   const [amount, setAmount] = useState(0);
   const [termMonths, setTermMonths] = useState(6);
-  const [reason, setReason] = useState("");
+  const [reasonTag, setReasonTag] = useState("");
+  const [otherReason, setOtherReason] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -1784,12 +1824,13 @@ function EquipmentPage() {
   };
 
   const handleSubmit = async () => {
-    if (!user || !equipmentLabel.trim() || amount <= 0 || !reason.trim()) return;
+    const reason = reasonTag === "other" ? otherReason.trim() : reasonTag;
+    if (!user || !equipmentLabel.trim() || amount <= 0 || !reason) return;
     setSaving(true);
     try {
       await submitEquipmentRequest(user.id, { equipmentItemId: selectedItemId || null, equipmentLabel, amount, termMonths, reason });
-      pushToast({ tone: "success", title: "Demande envoyée !", message: "La coopérative va l'examiner." });
-      setShowForm(false); setSelectedItemId(""); setEquipmentLabel(""); setAmount(0); setReason("");
+      pushToast({ tone: "success", big: true, title: "Demande envoyée !", message: "La coopérative va l'examiner." });
+      setShowForm(false); setSelectedItemId(""); setEquipmentLabel(""); setAmount(0); setReasonTag(""); setOtherReason("");
     } catch (err) {
       console.error("Erreur demande matériel :", err);
       pushToast({ tone: "warn", title: "Échec", message: "Réessayez." });
@@ -1812,31 +1853,25 @@ function EquipmentPage() {
 
       {catalog.length > 0 && (
         <div className="mb-4">
-          <div className="font-black text-stone-800 mb-2 text-sm">Catalogue</div>
+          <div className="font-black text-stone-800 mb-2 text-sm">Catalogue — touchez pour choisir</div>
           <div className="grid grid-cols-2 gap-2">
-            {catalog.map((it) => (
-              <div key={it.id} className="bg-white rounded-xl p-3 border border-stone-200 text-sm">
-                <div className="font-bold text-stone-800">{it.name}</div>
-                <div className="text-xs text-stone-500">{it.category}</div>
-                <div className="text-xs font-bold text-amber-700 mt-1">{it.estimatedPriceFcfa.toLocaleString("fr-FR")} F</div>
-              </div>
-            ))}
+            {catalog.map((it) => {
+              const selected = showForm && selectedItemId === it.id;
+              return (
+                <button key={it.id} type="button" onClick={() => { pickItem(it.id); setShowForm(true); }}
+                  className={`text-left rounded-xl p-3 border-2 text-sm ${selected ? "bg-amber-50 border-amber-500" : "bg-white border-stone-200"}`}>
+                  <div className="font-bold text-stone-800">{it.name}</div>
+                  <div className="text-xs text-stone-500">{it.category}</div>
+                  <div className="text-xs font-bold text-amber-700 mt-1">{it.estimatedPriceFcfa.toLocaleString("fr-FR")} F</div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
       {showForm && (
         <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-4 space-y-3">
-          {catalog.length > 0 && (
-            <div>
-              <label className="block text-xs font-semibold text-stone-600 mb-1">Équipement du catalogue (optionnel)</label>
-              <select value={selectedItemId} onChange={(e) => pickItem(e.target.value)}
-                className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm">
-                <option value="">— Autre / libre —</option>
-                {catalog.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
-              </select>
-            </div>
-          )}
           <div>
             <label className="block text-xs font-semibold text-stone-600 mb-1">Nom de l'équipement</label>
             <input value={equipmentLabel} onChange={(e) => setEquipmentLabel(e.target.value)}
@@ -1859,11 +1894,20 @@ function EquipmentPage() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-stone-600 mb-1">Motif</label>
-            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2}
-              className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+            <label className="block text-xs font-semibold text-stone-600 mb-1.5">Motif</label>
+            <IconGridPicker columns={2} value={reasonTag} onChange={setReasonTag}
+              options={[
+                { value: "Nouvelle récolte", emoji: "🌾", label: "Nouvelle récolte" },
+                { value: "Remplacer un outil cassé", emoji: "🔧", label: "Remplacer un outil" },
+                { value: "Agrandir ma production", emoji: "📈", label: "Agrandir ma production" },
+                { value: "other", emoji: "✍️", label: "Autre" },
+              ]} />
+            {reasonTag === "other" && (
+              <textarea value={otherReason} onChange={(e) => setOtherReason(e.target.value)} rows={2} placeholder="Précisez votre motif"
+                className="w-full mt-2 px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+            )}
           </div>
-          <button onClick={handleSubmit} disabled={saving || !equipmentLabel.trim() || amount <= 0 || !reason.trim()}
+          <button onClick={handleSubmit} disabled={saving || !equipmentLabel.trim() || amount <= 0 || (!reasonTag || (reasonTag === "other" && !otherReason.trim()))}
             className="w-full py-3 rounded-xl font-black text-white bg-gradient-to-br from-amber-500 to-orange-600 disabled:opacity-50">
             {saving ? "Envoi…" : "Envoyer la demande"}
           </button>
@@ -1991,7 +2035,7 @@ function PaymentsPage() {
     if (!user || amount <= 0) return;
     try {
       await submitContributionRequest(user.id, amount, "guarantee_fund");
-      pushToast({ tone: "success", title: "Cotisation envoyée !", message: "En attente de validation par l'admin (sous 24h)." });
+      pushToast({ tone: "success", big: true, title: "Cotisation envoyée !", message: "En attente de validation par l'admin (sous 24h)." });
     } catch (err) {
       console.error("Erreur envoi cotisation libre :", err);
       pushToast({ tone: "warn", title: "Échec de l'envoi", message: "Réessayez, vérifiez votre connexion." });
@@ -2102,7 +2146,7 @@ function CrowdfundPage() {
 
 // ==================== TOP BAR ====================
 
-function TopBar({ title, onBack, userName, onLogout }: any) {
+function TopBar({ title, voiceHint, onBack, userName, onLogout }: any) {
   const { lang, setLang, online } = useApp();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
@@ -2145,6 +2189,9 @@ function TopBar({ title, onBack, userName, onLogout }: any) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => speak(voiceHint || title)} className="p-2 bg-emerald-50 hover:bg-emerald-100 rounded-full text-emerald-700" aria-label="Écouter cette page">
+              <Volume2 className="w-4 h-4" />
+            </button>
             {user && (
               <button onClick={openNotifs} className="relative p-2 bg-stone-100 hover:bg-stone-200 rounded-full text-stone-700" aria-label="Notifications">
                 <Bell className="w-4 h-4" />
@@ -2275,6 +2322,30 @@ const PAGE_TITLES: Record<string, string> = {
   marketplace: "Marketplace Agricole",
   formation:   "Formation & Coaching",
   equipment:   "Financement Matériel",
+};
+
+/** Phrase courte lue à voix haute quand on appuie sur le bouton haut-parleur de chaque page (voir TopBar). */
+const PAGE_VOICE_HINTS: Record<string, string> = {
+  home:        "Ceci est votre écran d'accueil. Vous voyez votre solde et tous les services de la coopérative.",
+  susu:        "Bokanmin, votre épargne collective. Cotisez chaque semaine.",
+  weather:     "La météo de votre village et des conseils pour vos cultures.",
+  parcelles:   "Mes champs. Ajoutez vos parcelles avec leur position réelle.",
+  credit:      "Vos bons de financement. Acceptez ou refusez une offre de la coopérative.",
+  insurance:   "Votre assurance agricole contre la sécheresse et les inondations.",
+  agriprotect: "Prenez une photo pour protéger vos preuves de récolte.",
+  losses:      "Déclarez une perte pour augmenter vos droits au financement.",
+  certificate: "Votre certificat numérique agricole, à montrer si besoin.",
+  coopavec:    "Informations sur votre coopérative.",
+  crowdfund:   "Le financement participatif de vos bons par des investisseurs.",
+  collecte:    "Déclarez votre récolte pour la collecte.",
+  entrepots:   "Suivi des stocks en entrepôt.",
+  recyclage:   "Déclarez vos déchets agricoles pour valorisation.",
+  carbon:      "Vos crédits carbone. Vendez-les pour recevoir de l'argent.",
+  formation:   "Des conseils et formations pour améliorer votre ferme.",
+  equipment:   "Demandez un financement pour acheter du matériel agricole.",
+  identity:    "Votre identité agricole et vos réglages.",
+  payments:    "Envoyez une cotisation par Wave.",
+  marketplace: "Vendez votre récolte et suivez vos commandes.",
 };
 
 // ==================== ADMIN SPACE ====================
@@ -4168,6 +4239,7 @@ function Shell() {
     <div className="min-h-screen max-w-xl mx-auto relative shadow-2xl bg-stone-50">
       <TopBar
         title={PAGE_TITLES[page]}
+        voiceHint={PAGE_VOICE_HINTS[page]}
         onBack={page !== "home" ? goHome : undefined}
         userName={user.name}
         onLogout={handleLogout}
@@ -4175,6 +4247,7 @@ function Shell() {
       <main key={pageKey} className="pb-20 animate-fade-in">{render()}</main>
       <BottomNav current={bottomKey} onChange={navigate} />
       <Toast />
+      <BigConfirmation />
       {showOnboarding && <OnboardingTour onClose={() => setShowOnboarding(false)} />}
     </div>
   );

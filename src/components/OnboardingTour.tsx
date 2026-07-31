@@ -1,5 +1,7 @@
-import { useState } from "react";
-import { ChevronRight, X, Sprout, CreditCard, User } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronRight, X, Sprout, CreditCard, User, Volume2 } from "lucide-react";
+import { speak } from "../lib/speech";
+import { useApp } from "../context/AppContext";
 
 const STORAGE_KEY = "coopavec_onboarding_seen_v1";
 
@@ -8,21 +10,39 @@ export function hasSeenOnboarding(): boolean {
 }
 
 const STEPS = [
-  { icon: Sprout, color: "bg-green-600", title: "Bienvenue sur COOPAVEC 🌾", text: "Enregistrez vos champs avec leur position GPS réelle, en marchant tout le tour pour mesurer la surface automatiquement." },
-  { icon: User, color: "bg-amber-500", title: "Bokanmin — votre épargne", text: "Cotisez 1 500 FCFA chaque semaine. Cet argent forme un fonds commun déposé en banque, qui sert de garantie pour tous les bénéficiaires." },
-  { icon: CreditCard, color: "bg-violet-600", title: "Bon de financement participatif", text: "Plus vous cotisez régulièrement, plus votre plafond de financement augmente. Une fois demandé, un agent de la coopérative valide et débloque le financement." },
+  {
+    icon: Sprout, color: "bg-green-600", title: "Bienvenue 🌾",
+    text: "Marchez autour de votre champ pour l'enregistrer.",
+    voice: "Bienvenue sur Coopavec. Marchez tout autour de votre champ pour l'enregistrer automatiquement.",
+  },
+  {
+    icon: User, color: "bg-amber-500", title: "Bokanmin 🤝",
+    text: "Cotisez chaque semaine pour épargner ensemble.",
+    voice: "Bokanmin, c'est votre épargne. Cotisez un peu chaque semaine avec votre groupe.",
+  },
+  {
+    icon: CreditCard, color: "bg-violet-600", title: "Bon de financement 💳",
+    text: "Plus vous cotisez, plus vous pouvez recevoir de financement.",
+    voice: "Plus vous cotisez régulièrement, plus le financement que vous pouvez recevoir augmente.",
+  },
 ];
 
 export default function OnboardingTour({ onClose }: { onClose: () => void }) {
+  const { voiceEnabled } = useApp();
   const [step, setStep] = useState(0);
   const finish = () => { localStorage.setItem(STORAGE_KEY, "1"); onClose(); };
   const s = STEPS[step];
   const Icon = s.icon;
 
+  useEffect(() => { if (voiceEnabled) speak(s.voice); }, [step]);
+
   return (
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center p-4">
       <div className="w-full sm:max-w-sm bg-white rounded-3xl shadow-2xl p-6 animate-fade-up">
-        <div className="flex justify-end">
+        <div className="flex justify-between items-center">
+          <button onClick={() => speak(s.voice)} className="p-1.5 bg-emerald-50 rounded-full text-emerald-700" aria-label="Écouter">
+            <Volume2 className="w-4 h-4" />
+          </button>
           <button onClick={finish} className="p-1 text-stone-400 hover:text-stone-600" aria-label="Fermer">
             <X className="w-5 h-5" />
           </button>

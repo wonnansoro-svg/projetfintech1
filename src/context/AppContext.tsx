@@ -6,6 +6,8 @@ import { subscribeToParcelsByOwner } from "../services/parcelService";
 import { subscribeToWallet } from "../services/walletService";
 import { subscribeToTransactionsByUser, recordTransaction } from "../services/transactionService";
 import { computeCarbonCredits, CO2_TONNES_PER_CREDIT } from "../lib/carbon";
+import { speak } from "../lib/speech";
+import { vibrate } from "../lib/haptics";
 import { useAuth } from "./AuthContext";
 import type { Parcel as FirestoreParcel, Transaction as FirestoreTx } from "../types/firestore";
 
@@ -20,6 +22,13 @@ export interface Toast {
   title: string;
   message: string;
   tone: "success" | "info" | "warn";
+  /** Succès important initié par le fermier (dépôt, décision, envoi) — remplace le petit toast par un écran de confirmation plein écran. */
+  big?: boolean;
+}
+
+export interface BigConfirmation {
+  title: string;
+  message?: string;
 }
 
 interface AppState {
@@ -41,6 +50,10 @@ interface AppState {
   addTx: (tx: Omit<Tx, "id" | "userId" | "createdAt">) => void;
   pushToast: (t: Omit<Toast, "id">) => void;
   toasts: Toast[];
+  /** Lecture audio automatique des confirmations (voir pushToast) — réglable dans Mon ID Agricole. */
+  voiceEnabled: boolean;
+  setVoiceEnabled: (v: boolean) => void;
+  bigConfirmation: BigConfirmation | null;
   weather: WeatherData | null;
   weatherForecast: ForecastDay[] | null;
   weatherError: string | null;
@@ -57,6 +70,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(navigator.onLine);
   const [balance, setBalance] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => localStorage.getItem("voiceEnabled") !== "0");
+  const [bigConfirmation, setBigConfirmation] = useState<BigConfirmation | null>(null);
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [weatherForecast, setWeatherForecast] = useState<ForecastDay[] | null>(null);
   const [weatherError, setWeatherError] = useState<string | null>(null);
@@ -100,6 +115,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [insuranceTriggered] = useState(false);
 
   useEffect(() => { localStorage.setItem("lang", lang); }, [lang]);
+  useEffect(() => { localStorage.setItem("voiceEnabled", voiceEnabled ? "1" : "0"); }, [voiceEnabled]);
 
   useEffect(() => {
     localStorage.setItem("textScale", textScale);
@@ -118,6 +134,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const pushToast = (t: Omit<Toast, "id">) => {
+    if (voiceEnabled) speak(`${t.title}. ${t.message ?? ""}`);
+
+    if (t.big) {
+      setBigConfirmation({ title: t.title, message: t.message });
+      vibrate([20, 60, 20]);
+      setTimeout(() => setBigConfirmation(null), 2600);
+      return;
+    }
+
     const id = Date.now() + Math.random();
     setToasts((prev) => [...prev, { ...t, id }]);
     setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), 3200);
@@ -161,7 +186,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         balance, textScale, setTextScale,
         parcels, parcelsLoading, transactions, carbonCredits, availableCarbonCredits, co2Saved,
         insuranceTriggered, addTx,
-        pushToast, toasts, weather, weatherForecast, weatherError, currentLocation, loadWeather,
+        pushToast, toasts, voiceEnabled, setVoiceEnabled, bigConfirmation,
+        weather, weatherForecast, weatherError, currentLocation, loadWeather,
       }}
     >
       {children}
