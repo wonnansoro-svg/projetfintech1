@@ -71,7 +71,7 @@ async function writeProfileDocs(uid: string, input: NewProfileInput): Promise<Pr
   };
   await setDoc(doc(db, PROFILES, uid), profile);
   await setDoc(doc(db, WALLETS, uid), {
-    uid, balance: 0, totalContributed: 0, contributionsLast12m: 0, updatedAt: now,
+    uid, balance: 0, totalContributed: 0, contributionsLast12m: 0, carbonCreditsRedeemed: 0, updatedAt: now,
   });
   const digits = normalizePhone(input.phone);
   if (digits) await setDoc(doc(db, PHONE_INDEX, digits), { email: input.email });

@@ -5,6 +5,7 @@ import { getCurrentLocation, type GeoPoint } from "../lib/geolocation";
 import { subscribeToParcelsByOwner } from "../services/parcelService";
 import { subscribeToWallet } from "../services/walletService";
 import { subscribeToTransactionsByUser, recordTransaction } from "../services/transactionService";
+import { computeCarbonCredits, CO2_TONNES_PER_CREDIT } from "../lib/carbon";
 import { useAuth } from "./AuthContext";
 import type { Parcel as FirestoreParcel, Transaction as FirestoreTx } from "../types/firestore";
 
@@ -34,6 +35,7 @@ interface AppState {
   parcelsLoading: boolean;
   transactions: Tx[];
   carbonCredits: number;
+  availableCarbonCredits: number;
   co2Saved: number;
   insuranceTriggered: boolean;
   addTx: (tx: Omit<Tx, "id" | "userId" | "createdAt">) => void;
@@ -80,14 +82,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, [user?.id]);
 
+  const [carbonCreditsRedeemed, setCarbonCreditsRedeemed] = useState(0);
   useEffect(() => {
-    if (!user) { setBalance(0); return; }
-    const unsubscribe = subscribeToWallet(user.id, (wallet) => setBalance(wallet?.balance ?? 0));
+    if (!user) { setBalance(0); setCarbonCreditsRedeemed(0); return; }
+    const unsubscribe = subscribeToWallet(user.id, (wallet) => {
+      setBalance(wallet?.balance ?? 0);
+      setCarbonCreditsRedeemed(wallet?.carbonCreditsRedeemed ?? 0);
+    });
     return () => unsubscribe();
   }, [user?.id]);
 
-  const [carbonCredits] = useState(0);
-  const [co2Saved] = useState(0);
+  // Crédits carbone gagnés grâce aux parcelles enregistrées (verdissement du champ) —
+  // calculés en direct, pas stockés, pour toujours refléter les parcelles à jour.
+  const carbonCredits = computeCarbonCredits(parcels);
+  const availableCarbonCredits = Math.max(0, carbonCredits - carbonCreditsRedeemed);
+  const co2Saved = Math.round(carbonCredits * CO2_TONNES_PER_CREDIT * 10) / 10;
   const [insuranceTriggered] = useState(false);
 
   useEffect(() => { localStorage.setItem("lang", lang); }, [lang]);
@@ -150,7 +159,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       value={{
         lang, setLang, online, userName, userVillage,
         balance, textScale, setTextScale,
-        parcels, parcelsLoading, transactions, carbonCredits, co2Saved,
+        parcels, parcelsLoading, transactions, carbonCredits, availableCarbonCredits, co2Saved,
         insuranceTriggered, addTx,
         pushToast, toasts, weather, weatherForecast, weatherError, currentLocation, loadWeather,
       }}

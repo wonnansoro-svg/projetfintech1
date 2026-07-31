@@ -40,6 +40,8 @@ export interface Wallet {
   balance: number;
   totalContributed: number;
   contributionsLast12m: number;
+  /** Crédits carbone déjà convertis en argent (voir lib/carbon.ts) — le reste s'obtient en comparant au total calculé depuis les parcelles. */
+  carbonCreditsRedeemed: number;
   updatedAt: number;
 }
 
@@ -169,6 +171,10 @@ export interface Credit {
   investedAmount: number;
   /** Part déjà validée par l'admin et versée sur le solde du bénéficiaire — plafonné à approvedAmount. */
   creditedAmount: number;
+  /** Absent = "cash" (bons créés avant l'ajout du financement matériel). */
+  purpose?: "cash" | "equipment";
+  /** Nom de l'équipement financé, uniquement si purpose === "equipment". */
+  equipmentLabel?: string | null;
 }
 
 export type BondInvestmentStatus = "pending" | "approved" | "rejected";
@@ -229,4 +235,87 @@ export interface CooperativeInfo {
   address: string;
   region: string;
   updatedAt: number;
+}
+
+// ==================== MARKETPLACE AGRICOLE ====================
+
+export type ListingStatus = "active" | "sold" | "cancelled";
+
+export interface MarketplaceListing {
+  id: string;
+  farmerId: string;
+  crop: Crop;
+  quantityKg: number;
+  pricePerKgFcfa: number;
+  description: string;
+  status: ListingStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type OrderStatus = "pending" | "paid" | "cancelled";
+
+/** L'acheteur est une personne/entité externe à l'app (pas de rôle "acheteur") — la coop sert d'intermédiaire. */
+export interface MarketplaceOrder {
+  id: string;
+  listingId: string;
+  farmerId: string;
+  buyerLabel: string;
+  quantityKg: number;
+  totalAmountFcfa: number;
+  status: OrderStatus;
+  createdAt: number;
+  paidAt: number | null;
+  paidBy: string | null;
+}
+
+// ==================== FORMATION / COACHING ====================
+
+export interface TrainingModule {
+  id: string;
+  title: string;
+  category: string;
+  summary: string;
+  content: string;
+  durationMinutes: number;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Un seul document par utilisateur, id = uid. */
+export interface TrainingProgress {
+  uid: string;
+  completedIds: string[];
+  updatedAt: number;
+}
+
+// ==================== FINANCEMENT MATÉRIEL AGRICOLE ====================
+
+export interface EquipmentCatalogItem {
+  id: string;
+  name: string;
+  category: string;
+  estimatedPriceFcfa: number;
+  description: string;
+  createdAt: number;
+}
+
+export type EquipmentRequestStatus = "pending" | "approved" | "rejected";
+
+export interface EquipmentRequest {
+  id: string;
+  farmerId: string;
+  equipmentItemId: string | null;
+  equipmentLabel: string;
+  amount: number;
+  termMonths: number;
+  reason: string;
+  status: EquipmentRequestStatus;
+  /** Rempli une fois approuvé — le bon de financement correspondant, géré par le moteur de bons existant. */
+  linkedCreditId: string | null;
+  rejectionReason: string | null;
+  createdAt: number;
+  decidedAt: number | null;
+  decidedBy: string | null;
 }

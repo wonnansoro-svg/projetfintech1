@@ -22,8 +22,15 @@ const BOND_INVESTMENTS = "bondInvestments";
  * montant librement. Le bon attend l'approbation du bénéficiaire avant
  * d'être proposé aux investisseurs (`approveBondByBeneficiary`).
  */
-export async function createBondForFarmer(adminId: string, farmerId: string, amount: number): Promise<string> {
-  if (amount <= 0) throw new Error("Le montant doit être positif.");
+export interface CreateBondOptions {
+  purpose?: "cash" | "equipment";
+  equipmentLabel?: string;
+  /** Durée flexible (ex. financement matériel aligné sur le cycle de récolte) — sinon celle des réglages. */
+  termMonths?: number;
+}
+
+/** Calcul du plafond indicatif d'un bénéficiaire — réutilisé par `createBondForFarmer` et par l'aperçu admin (marketplace matériel). */
+export async function estimateCreditCeiling(farmerId: string) {
   const [walletSnap, profile, fund, settings, lossValue] = await Promise.all([
     getDoc(doc(db, WALLETS, farmerId)), getProfile(farmerId), getGuaranteeFund(), getCreditSettings(), getUserLossValueFcfa(farmerId),
   ]);
@@ -33,6 +40,12 @@ export async function createBondForFarmer(adminId: string, farmerId: string, amo
   const { ceiling, fundShareCap, regulatoryCap } = computeCreditCeiling({
     personalContribution12m: wallet?.contributionsLast12m ?? 0, fund, settings, kycStatus: profile.kycStatus, financingScore,
   });
+  return { profile, wallet, fund, settings, financingScore, ceiling, fundShareCap, regulatoryCap };
+}
+
+export async function createBondForFarmer(adminId: string, farmerId: string, amount: number, opts: CreateBondOptions = {}): Promise<string> {
+  if (amount <= 0) throw new Error("Le montant doit être positif.");
+  const { profile, wallet, fund, settings, financingScore, ceiling, fundShareCap, regulatoryCap } = await estimateCreditCeiling(farmerId);
 
   const now = Date.now();
   const creditRef = doc(collection(db, CREDITS));
@@ -40,7 +53,8 @@ export async function createBondForFarmer(adminId: string, farmerId: string, amo
     id: creditRef.id, userId: farmerId, createdBy: adminId,
     requestedAmount: amount, approvedAmount: amount, status: "pending",
     investedAmount: 0, creditedAmount: 0,
-    interestRatePerMonth: settings.monthlyRate, termMonths: settings.termMonths, schedule: [],
+    purpose: opts.purpose ?? "cash", equipmentLabel: opts.equipmentLabel ?? null,
+    interestRatePerMonth: settings.monthlyRate, termMonths: opts.termMonths ?? settings.termMonths, schedule: [],
     calculationSnapshot: {
       personalContribution12m: wallet?.contributionsLast12m ?? 0,
       fundAvailableAtDecision: fund.availableForCredit,

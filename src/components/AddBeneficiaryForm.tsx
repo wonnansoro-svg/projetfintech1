@@ -140,12 +140,12 @@ export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["f
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-stone-700 mb-1.5">Coopérative</label>
+              <label className="block text-sm font-semibold text-stone-700 mb-1.5">{role === "investor" ? "Entreprise" : "Coopérative"}</label>
               <div className="relative">
                 <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
                 <input value={cooperativeId} onChange={(e) => setCooperativeId(e.target.value)}
                   className="w-full pl-9 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none text-sm"
-                  placeholder="Nom de la coopérative" required />
+                  placeholder={role === "investor" ? "Nom de l'entreprise" : "Nom de la coopérative"} required />
               </div>
             </div>
 

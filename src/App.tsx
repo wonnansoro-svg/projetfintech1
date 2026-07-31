@@ -7,7 +7,7 @@ import {
   Recycle, FileText, Camera, BarChart2, CreditCard, Building2,
   Package, BadgeCheck, ChevronRight, Star, TrendingUp, Banknote,
   LogOut, Settings, Bell, PieChart, Activity, X, UserPlus,
-  UsersRound, Plus, Pencil, Trash2,
+  UsersRound, Plus, Pencil, Trash2, GraduationCap, Wrench, ShoppingCart, BookOpen,
 } from "lucide-react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -33,6 +33,27 @@ import { subscribeToCooperativeInfo, updateCooperativeInfo } from "./services/co
 import { computeCreditCeiling, computeFinancingScore } from "./lib/credit";
 import { listProfiles, updateProfile, getProfile, resolveLoginEmail } from "./services/profileService";
 import { looksLikeEmail, syntheticEmailForPhone } from "./lib/phoneAuth";
+import { CROPS } from "./lib/crops";
+import { computeCarbonCredits, CARBON_CREDIT_PRICE_FCFA } from "./lib/carbon";
+import { redeemCarbonCredits } from "./services/carbonService";
+import {
+  createListing, subscribeToListingsByFarmer, cancelListing, subscribeToActiveListings,
+  createOrder, markOrderPaid, cancelOrder, subscribeToOrdersByFarmer, subscribeToPendingOrders,
+} from "./services/marketplaceService";
+import {
+  subscribeToModules, createModule, deleteModule,
+  subscribeToProgress, markModuleComplete,
+} from "./services/trainingService";
+import {
+  subscribeToEquipmentCatalog, createEquipmentItem, deleteEquipmentItem,
+  submitEquipmentRequest, subscribeToUserEquipmentRequests, subscribeToPendingEquipmentRequests,
+  approveEquipmentRequest, rejectEquipmentRequest,
+} from "./services/equipmentService";
+import { estimateCreditCeiling } from "./services/creditService";
+import type {
+  MarketplaceListing, MarketplaceOrder, TrainingModule, TrainingProgress,
+  EquipmentCatalogItem, EquipmentRequest,
+} from "./types/firestore";
 import { createGroup, updateGroup, deleteGroup, subscribeToGroupsByCooperative } from "./services/groupService";
 import { hasPermission, SUPERVISOR_PERMISSION_GROUPS } from "./lib/permissions";
 import { uploadKycPhoto, uploadLossPhoto } from "./services/storageService";
@@ -55,7 +76,7 @@ import MemberDetailPanel from "./components/MemberDetailPanel";
 import { listRecentTransactions } from "./services/transactionService";
 import { getAgriculturalAdvice } from "./lib/weather";
 import { useBackGuard } from "./lib/backGuard";
-import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction, SusuGroup, BondInvestment, LossClaim, Contribution } from "./types/firestore";
+import type { GuaranteeFund, CreditSettings, Credit, Profile, Transaction, SusuGroup, BondInvestment, LossClaim, Contribution, Crop } from "./types/firestore";
 
 // ==================== COMPOSANTS RÉUTILISABLES ====================
 
@@ -313,6 +334,9 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
     // Ligne 7 — Durabilité
     { emoji: "♻️", label: "Recyclage",        sub: "Déchets",    color: "emerald", page: "recyclage" },
     { emoji: "🍃", label: "Carbone",          sub: `${carbonCredits} crédits`, color: "green", page: "carbon", badge: carbonCredits },
+    // Ligne 8 — Accompagnement
+    { emoji: "🎓", label: "Formation",        sub: "Coaching",   color: "sky",     page: "formation" },
+    { emoji: "⚙️", label: "Matériel",         sub: "Financement flexible", color: "amber", page: "equipment" },
   ];
 
   return (
@@ -1387,16 +1411,132 @@ function CoopavecPage() {
 
 // ==================== MODULE : MARKETPLACE AGRICOLE (SOP-02) ====================
 
+const LISTING_STATUS_LABEL: Record<string, string> = { active: "En vente", sold: "Vendue", cancelled: "Annulée" };
+const ORDER_STATUS_LABEL: Record<string, string> = { pending: "En attente de paiement", paid: "Payée", cancelled: "Annulée" };
+
 function MarketplacePage() {
+  const { user } = useAuth();
+  const { pushToast } = useApp();
+  const [listings, setListings] = useState<MarketplaceListing[]>([]);
+  const [orders, setOrders] = useState<MarketplaceOrder[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [crop, setCrop] = useState<Crop>("cacao");
+  const [quantityKg, setQuantityKg] = useState(0);
+  const [pricePerKg, setPricePerKg] = useState(0);
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    const u1 = subscribeToListingsByFarmer(user.id, setListings);
+    const u2 = subscribeToOrdersByFarmer(user.id, setOrders);
+    return () => { u1(); u2(); };
+  }, [user?.id]);
+
+  const handleCreate = async () => {
+    if (!user || quantityKg <= 0 || pricePerKg <= 0) return;
+    setSaving(true);
+    try {
+      await createListing(user.id, { crop, quantityKg, pricePerKgFcfa: pricePerKg, description });
+      pushToast({ tone: "success", title: "Récolte publiée !", message: "Votre annonce est visible par la coopérative." });
+      setShowForm(false); setQuantityKg(0); setPricePerKg(0); setDescription("");
+    } catch (err) {
+      console.error("Erreur publication annonce :", err);
+      pushToast({ tone: "warn", title: "Échec", message: "Réessayez." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = async (listingId: string) => {
+    if (!user) return;
+    try {
+      await cancelListing(listingId, user.id);
+    } catch (err) {
+      console.error("Erreur annulation annonce :", err);
+      pushToast({ tone: "warn", title: "Échec", message: "Réessayez." });
+    }
+  };
+
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-orange-500 via-amber-600 to-yellow-700 text-white rounded-3xl p-5 shadow-xl mb-4">
         <div className="flex items-center gap-2 mb-2"><Package className="w-6 h-6" /><div className="font-black text-lg">Marketplace Agricole</div></div>
-        <p className="text-sm opacity-90">Publiez vos récoltes, suivez vos commandes jusqu'au paiement.</p>
+        <p className="text-sm opacity-90 mb-3">Publiez vos récoltes, suivez vos commandes jusqu'au paiement.</p>
+        <button onClick={() => setShowForm((v) => !v)} className="bg-white/20 backdrop-blur hover:bg-white/30 rounded-xl px-4 py-2.5 text-sm font-bold flex items-center gap-2">
+          <Plus className="w-4 h-4" /> Publier une récolte
+        </button>
       </div>
 
-      <ComingSoonNotice icon={Package} title="Marketplace agricole"
-        message="La publication d'offres et le suivi des commandes jusqu'au paiement arrivent bientôt." />
+      {showForm && (
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-4 space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1">Culture</label>
+            <select value={crop} onChange={(e) => setCrop(e.target.value as Crop)}
+              className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm font-semibold">
+              {CROPS.map((c) => <option key={c.key} value={c.key}>{c.emoji} {c.label}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1">Quantité (kg)</label>
+              <input type="number" min={0} value={quantityKg || ""} onChange={(e) => setQuantityKg(Number(e.target.value))}
+                className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1">Prix / kg (F)</label>
+              <input type="number" min={0} value={pricePerKg || ""} onChange={(e) => setPricePerKg(Number(e.target.value))}
+                className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1">Description (optionnel)</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
+              className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+          </div>
+          {quantityKg > 0 && pricePerKg > 0 && (
+            <div className="text-xs text-orange-700 font-semibold">Valeur estimée : {(quantityKg * pricePerKg).toLocaleString("fr-FR")} F</div>
+          )}
+          <button onClick={handleCreate} disabled={saving || quantityKg <= 0 || pricePerKg <= 0}
+            className="w-full py-3 rounded-xl font-black text-white bg-gradient-to-br from-orange-500 to-amber-600 disabled:opacity-50 flex items-center justify-center gap-2">
+            {saving ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Publier
+          </button>
+        </div>
+      )}
+
+      <div className="font-black text-stone-800 mb-2">Mes annonces</div>
+      {listings.length === 0 && <div className="text-sm text-stone-400 text-center py-4">Aucune annonce publiée.</div>}
+      {listings.map((l) => {
+        const cropInfo = CROPS.find((c) => c.key === l.crop);
+        return (
+          <div key={l.id} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <div className="font-bold text-stone-800">{cropInfo?.emoji} {cropInfo?.label} · {l.quantityKg.toLocaleString("fr-FR")} kg</div>
+              <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${l.status === "active" ? "bg-emerald-100 text-emerald-700" : l.status === "sold" ? "bg-sky-100 text-sky-700" : "bg-stone-100 text-stone-500"}`}>
+                {LISTING_STATUS_LABEL[l.status]}
+              </span>
+            </div>
+            <div className="text-xs text-stone-500 mb-2">{l.pricePerKgFcfa.toLocaleString("fr-FR")} F/kg</div>
+            {l.status === "active" && (
+              <button onClick={() => handleCancel(l.id)} className="text-xs font-bold text-rose-600">Annuler l'annonce</button>
+            )}
+          </div>
+        );
+      })}
+
+      <div className="font-black text-stone-800 mb-2 mt-5">Mes commandes</div>
+      {orders.length === 0 && <div className="text-sm text-stone-400 text-center py-4">Aucune commande pour l'instant.</div>}
+      {orders.map((o) => (
+        <div key={o.id} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-3 flex items-center justify-between">
+          <div>
+            <div className="font-bold text-stone-800 text-sm">{o.buyerLabel}</div>
+            <div className="text-xs text-stone-500">{o.quantityKg.toLocaleString("fr-FR")} kg · {o.totalAmountFcfa.toLocaleString("fr-FR")} F</div>
+          </div>
+          <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${o.status === "paid" ? "bg-emerald-100 text-emerald-700" : o.status === "pending" ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-500"}`}>
+            {ORDER_STATUS_LABEL[o.status]}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1463,17 +1603,288 @@ function RecyclagePage() {
 // ==================== MODULE CARBONE ====================
 
 function CarbonPage() {
-  const { carbonCredits, co2Saved } = useApp();
+  const { carbonCredits, availableCarbonCredits, co2Saved, parcels, pushToast } = useApp();
+  const { user } = useAuth();
+  const [redeemAmount, setRedeemAmount] = useState(0);
+
+  useEffect(() => { setRedeemAmount(availableCarbonCredits); }, [availableCarbonCredits]);
+
+  const parcelsByCrop = CROPS
+    .map((c) => ({ ...c, parcels: parcels.filter((p) => p.crop === c.key) }))
+    .filter((c) => c.parcels.length > 0)
+    .map((c) => ({
+      ...c,
+      hectares: c.parcels.reduce((sum, p) => sum + p.hectares, 0),
+      credits: computeCarbonCredits(c.parcels),
+    }));
+
+  const handleRedeem = async () => {
+    if (!user || redeemAmount <= 0) return;
+    try {
+      await redeemCarbonCredits(user.id, redeemAmount, carbonCredits);
+      pushToast({ tone: "success", title: "Prime carbone versée !", message: `${(redeemAmount * CARBON_CREDIT_PRICE_FCFA).toLocaleString("fr-FR")} F` });
+    } catch (err) {
+      console.error("Erreur rachat crédits carbone :", err);
+      pushToast({ tone: "warn", title: "Échec", message: err instanceof Error ? err.message : "Réessayez." });
+      throw err;
+    }
+  };
+
   return (
     <div className="p-4 pb-24 max-w-xl mx-auto">
       <div className="animate-fade-up relative bg-gradient-to-br from-emerald-500 via-green-600 to-teal-700 text-white rounded-3xl p-5 shadow-xl mb-4">
+        <div className="text-sm opacity-90">Vos parcelles enregistrées "verdissent" votre ferme et génèrent des crédits carbone.</div>
         <div className="relative grid grid-cols-2 gap-3 mt-3">
-          <div className="bg-white/15 backdrop-blur rounded-xl p-3"><Coins className="w-5 h-5 opacity-80 mb-1" /><div className="text-xs opacity-80 font-medium">Crédits carbone</div><div className="text-2xl font-black">{carbonCredits}</div></div>
+          <div className="bg-white/15 backdrop-blur rounded-xl p-3"><Coins className="w-5 h-5 opacity-80 mb-1" /><div className="text-xs opacity-80 font-medium">Crédits gagnés</div><div className="text-2xl font-black">{carbonCredits}</div></div>
           <div className="bg-white/15 backdrop-blur rounded-xl p-3"><TreePine className="w-5 h-5 opacity-80 mb-1" /><div className="text-xs opacity-80 font-medium">CO₂ économisé</div><div className="text-2xl font-black">{co2Saved}t</div></div>
         </div>
       </div>
-      <ComingSoonNotice icon={TreePine} title="Crédits carbone"
-        message="Le calcul et la vente de crédits carbone à partir de vos pratiques agricoles arrivent bientôt." />
+
+      {parcelsByCrop.length === 0 ? (
+        <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300 mb-4">
+          <TreePine className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+          <div className="text-sm text-stone-500 font-medium">Enregistrez une parcelle (onglet "Mes Champs") pour commencer à gagner des crédits carbone.</div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-4">
+          <div className="font-black text-stone-800 mb-3">🌱 Détail par culture</div>
+          {parcelsByCrop.map((c) => (
+            <div key={c.key} className="flex items-center justify-between py-2 border-b border-stone-100 last:border-0">
+              <div className="text-sm text-stone-700">{c.emoji} {c.label} · {c.hectares.toLocaleString("fr-FR")} ha</div>
+              <div className="text-sm font-black text-emerald-700">+{c.credits.toLocaleString("fr-FR")}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm">
+        <div className="font-black text-stone-800 mb-1">💰 Vendre mes crédits carbone</div>
+        <p className="text-xs text-stone-500 mb-3">{CARBON_CREDIT_PRICE_FCFA.toLocaleString("fr-FR")} F par crédit, versés directement sur votre solde.</p>
+        {availableCarbonCredits <= 0 ? (
+          <div className="text-xs text-stone-400 text-center py-2">Aucun crédit disponible pour l'instant.</div>
+        ) : (
+          <>
+            <div className="flex items-center justify-center gap-3 mb-3">
+              <button onClick={() => setRedeemAmount((a) => Math.max(0, a - 1))} className="w-10 h-10 rounded-xl bg-stone-100 font-black">−</button>
+              <div className="text-center">
+                <div className="text-2xl font-black text-stone-800">{redeemAmount}</div>
+                <div className="text-[10px] text-stone-500 font-semibold uppercase">/ {availableCarbonCredits} disponible{availableCarbonCredits > 1 ? "s" : ""}</div>
+              </div>
+              <button onClick={() => setRedeemAmount((a) => Math.min(availableCarbonCredits, a + 1))} className="w-10 h-10 rounded-xl bg-stone-100 font-black">+</button>
+            </div>
+            <div className="bg-emerald-50 rounded-xl p-3 text-center mb-3 border border-emerald-100">
+              <Money value={redeemAmount * CARBON_CREDIT_PRICE_FCFA} size="md" />
+            </div>
+            <ConfirmButton onConfirm={handleRedeem} label="Vendre ✓"
+              className="w-full py-4 rounded-2xl font-extrabold text-white text-lg shadow-lg bg-gradient-to-br from-emerald-500 to-green-600" />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ==================== MODULE FORMATION / COACHING ====================
+
+function FormationPage() {
+  const { user } = useAuth();
+  const [modules, setModules] = useState<TrainingModule[]>([]);
+  const [progress, setProgress] = useState<TrainingProgress | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const u1 = subscribeToModules(setModules);
+    const u2 = subscribeToProgress(user.id, setProgress);
+    return () => { u1(); u2(); };
+  }, [user?.id]);
+
+  const completedIds = new Set(progress?.completedIds ?? []);
+  const categories = Array.from(new Set(modules.map((m) => m.category)));
+
+  return (
+    <div className="p-4 pb-24 max-w-xl mx-auto">
+      <div className="animate-fade-up relative bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-700 text-white rounded-3xl p-5 shadow-xl mb-4">
+        <div className="flex items-center gap-2 mb-2"><GraduationCap className="w-6 h-6" /><div className="font-black text-lg">Formation & Coaching</div></div>
+        <p className="text-sm opacity-90">{completedIds.size}/{modules.length} module{modules.length > 1 ? "s" : ""} terminé{completedIds.size > 1 ? "s" : ""}</p>
+      </div>
+
+      {modules.length === 0 && (
+        <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+          <BookOpen className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+          <div className="text-sm text-stone-500 font-medium">Aucun contenu pour l'instant — revenez bientôt.</div>
+        </div>
+      )}
+
+      {categories.map((cat) => (
+        <div key={cat} className="mb-4">
+          <div className="text-xs font-black text-stone-500 uppercase tracking-wide mb-2">{cat}</div>
+          {modules.filter((m) => m.category === cat).map((m) => {
+            const done = completedIds.has(m.id);
+            const open = openId === m.id;
+            return (
+              <div key={m.id} className="bg-white rounded-2xl border border-stone-200 shadow-sm mb-2 overflow-hidden">
+                <button onClick={() => setOpenId(open ? null : m.id)} className="w-full text-left p-4 flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${done ? "bg-emerald-100" : "bg-sky-100"}`}>
+                    {done ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <BookOpen className="w-4 h-4 text-sky-600" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-stone-800 text-sm truncate">{m.title}</div>
+                    <div className="text-xs text-stone-500">{m.summary} · {m.durationMinutes} min</div>
+                  </div>
+                </button>
+                {open && (
+                  <div className="px-4 pb-4">
+                    <p className="text-sm text-stone-600 whitespace-pre-line mb-3">{m.content}</p>
+                    {!done && user && (
+                      <button onClick={() => markModuleComplete(user.id, m.id)}
+                        className="w-full py-2.5 rounded-xl font-bold text-white text-sm bg-gradient-to-br from-sky-500 to-blue-600">
+                        Marquer comme terminé
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ==================== MODULE FINANCEMENT MATÉRIEL AGRICOLE ====================
+
+const EQUIPMENT_TERM_OPTIONS = [3, 6, 9, 12];
+
+function EquipmentPage() {
+  const { user } = useAuth();
+  const { pushToast } = useApp();
+  const [catalog, setCatalog] = useState<EquipmentCatalogItem[]>([]);
+  const [requests, setRequests] = useState<EquipmentRequest[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState<string>("");
+  const [equipmentLabel, setEquipmentLabel] = useState("");
+  const [amount, setAmount] = useState(0);
+  const [termMonths, setTermMonths] = useState(6);
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const u1 = subscribeToEquipmentCatalog(setCatalog);
+    if (!user) return;
+    const u2 = subscribeToUserEquipmentRequests(user.id, setRequests);
+    return () => { u1(); u2(); };
+  }, [user?.id]);
+
+  const pickItem = (itemId: string) => {
+    setSelectedItemId(itemId);
+    const item = catalog.find((c) => c.id === itemId);
+    if (item) { setEquipmentLabel(item.name); setAmount(item.estimatedPriceFcfa); }
+  };
+
+  const handleSubmit = async () => {
+    if (!user || !equipmentLabel.trim() || amount <= 0 || !reason.trim()) return;
+    setSaving(true);
+    try {
+      await submitEquipmentRequest(user.id, { equipmentItemId: selectedItemId || null, equipmentLabel, amount, termMonths, reason });
+      pushToast({ tone: "success", title: "Demande envoyée !", message: "La coopérative va l'examiner." });
+      setShowForm(false); setSelectedItemId(""); setEquipmentLabel(""); setAmount(0); setReason("");
+    } catch (err) {
+      console.error("Erreur demande matériel :", err);
+      pushToast({ tone: "warn", title: "Échec", message: "Réessayez." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const statusLabel: Record<string, string> = { pending: "En attente", approved: "Approuvée", rejected: "Refusée" };
+
+  return (
+    <div className="p-4 pb-24 max-w-xl mx-auto">
+      <div className="animate-fade-up relative bg-gradient-to-br from-amber-500 via-orange-600 to-red-600 text-white rounded-3xl p-5 shadow-xl mb-4">
+        <div className="flex items-center gap-2 mb-2"><Wrench className="w-6 h-6" /><div className="font-black text-lg">Financement Matériel</div></div>
+        <p className="text-sm opacity-90 mb-3">Choisissez votre équipement, une durée flexible adaptée à votre cycle de récolte.</p>
+        <button onClick={() => setShowForm((v) => !v)} className="bg-white/20 backdrop-blur hover:bg-white/30 rounded-xl px-4 py-2.5 text-sm font-bold flex items-center gap-2">
+          <Plus className="w-4 h-4" /> Demander un financement
+        </button>
+      </div>
+
+      {catalog.length > 0 && (
+        <div className="mb-4">
+          <div className="font-black text-stone-800 mb-2 text-sm">Catalogue</div>
+          <div className="grid grid-cols-2 gap-2">
+            {catalog.map((it) => (
+              <div key={it.id} className="bg-white rounded-xl p-3 border border-stone-200 text-sm">
+                <div className="font-bold text-stone-800">{it.name}</div>
+                <div className="text-xs text-stone-500">{it.category}</div>
+                <div className="text-xs font-bold text-amber-700 mt-1">{it.estimatedPriceFcfa.toLocaleString("fr-FR")} F</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showForm && (
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-4 space-y-3">
+          {catalog.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1">Équipement du catalogue (optionnel)</label>
+              <select value={selectedItemId} onChange={(e) => pickItem(e.target.value)}
+                className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm">
+                <option value="">— Autre / libre —</option>
+                {catalog.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1">Nom de l'équipement</label>
+            <input value={equipmentLabel} onChange={(e) => setEquipmentLabel(e.target.value)}
+              className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1">Montant demandé (F)</label>
+            <input type="number" min={0} value={amount || ""} onChange={(e) => setAmount(Number(e.target.value))}
+              className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1">Durée de remboursement</label>
+            <div className="flex gap-2">
+              {EQUIPMENT_TERM_OPTIONS.map((t) => (
+                <button key={t} onClick={() => setTermMonths(t)}
+                  className={`flex-1 py-2 rounded-xl text-sm font-bold ${termMonths === t ? "bg-amber-600 text-white" : "bg-stone-100 text-stone-600"}`}>
+                  {t} mois
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-stone-600 mb-1">Motif</label>
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2}
+              className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+          </div>
+          <button onClick={handleSubmit} disabled={saving || !equipmentLabel.trim() || amount <= 0 || !reason.trim()}
+            className="w-full py-3 rounded-xl font-black text-white bg-gradient-to-br from-amber-500 to-orange-600 disabled:opacity-50">
+            {saving ? "Envoi…" : "Envoyer la demande"}
+          </button>
+        </div>
+      )}
+
+      <div className="font-black text-stone-800 mb-2">Mes demandes</div>
+      {requests.length === 0 && <div className="text-sm text-stone-400 text-center py-4">Aucune demande pour l'instant.</div>}
+      {requests.map((r) => (
+        <div key={r.id} className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm mb-3">
+          <div className="flex items-center justify-between mb-1">
+            <div className="font-bold text-stone-800 text-sm">{r.equipmentLabel}</div>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${r.status === "approved" ? "bg-emerald-100 text-emerald-700" : r.status === "pending" ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-600"}`}>
+              {statusLabel[r.status]}
+            </span>
+          </div>
+          <div className="text-xs text-stone-500">{r.amount.toLocaleString("fr-FR")} F · {r.termMonths} mois</div>
+          {r.status === "approved" && <div className="text-xs text-emerald-700 mt-1">✓ Votre bon est visible par les investisseurs.</div>}
+          {r.status === "rejected" && r.rejectionReason && <div className="text-xs text-rose-600 mt-1">{r.rejectionReason}</div>}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1841,7 +2252,7 @@ type AllPages =
   | PageKey
   | "susu" | "credit" | "insurance" | "agriprotect" | "losses"
   | "certificate" | "coopavec" | "crowdfund" | "collecte"
-  | "entrepots" | "recyclage" | "carbon" | "marketplace";
+  | "entrepots" | "recyclage" | "carbon" | "marketplace" | "formation" | "equipment";
 
 const PAGE_TITLES: Record<string, string> = {
   home:        "COOPAVEC",
@@ -1862,6 +2273,8 @@ const PAGE_TITLES: Record<string, string> = {
   identity:    "Mon ID Agricole",
   payments:    "Paiements Mobile",
   marketplace: "Marketplace Agricole",
+  formation:   "Formation & Coaching",
+  equipment:   "Financement Matériel",
 };
 
 // ==================== ADMIN SPACE ====================
@@ -1888,6 +2301,9 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
   const [showSecurityPanel, setShowSecurityPanel] = useState(false);
   const [showReportsPanel, setShowReportsPanel] = useState(false);
   const [showCooperativePanel, setShowCooperativePanel] = useState(false);
+  const [showMarketplacePanel, setShowMarketplacePanel] = useState(false);
+  const [showFormationPanel, setShowFormationPanel] = useState(false);
+  const [showEquipmentPanel, setShowEquipmentPanel] = useState(false);
 
   const refreshProfiles = () => { listProfiles().then((p) => { setProfiles(p); setProfilesLoading(false); }); };
   useEffect(refreshProfiles, []);
@@ -2204,6 +2620,9 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
                 { icon: Shield,     label: "Sécurité & accès", desc: "Rôles et permissions",    onClick: () => setShowSecurityPanel(true) },
                 { icon: FileText,   label: "Rapports",         desc: "Générer des exports",     onClick: () => setShowReportsPanel(true) },
                 { icon: Building2,  label: "Coopérative",      desc: "Informations structure",  onClick: () => setShowCooperativePanel(true) },
+                { icon: ShoppingCart, label: "Marketplace",    desc: "Annonces et commandes",   onClick: () => setShowMarketplacePanel(true) },
+                { icon: GraduationCap, label: "Formation",     desc: "Contenus pédagogiques",   onClick: () => setShowFormationPanel(true) },
+                { icon: Wrench,     label: "Financement matériel", desc: "Catalogue et demandes", onClick: () => setShowEquipmentPanel(true) },
               ].map((it, i) => {
                 const Icon = it.icon;
                 return (
@@ -2258,6 +2677,15 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
       )}
       {showCooperativePanel && (
         <CooperativeInfoPanel onClose={() => setShowCooperativePanel(false)} />
+      )}
+      {showMarketplacePanel && (
+        <MarketplaceAdminPanel nameByUid={nameByUid} onClose={() => setShowMarketplacePanel(false)} />
+      )}
+      {showFormationPanel && (
+        <FormationAdminPanel onClose={() => setShowFormationPanel(false)} />
+      )}
+      {showEquipmentPanel && (
+        <EquipmentAdminPanel nameByUid={nameByUid} onClose={() => setShowEquipmentPanel(false)} />
       )}
     </div>
   );
@@ -2606,6 +3034,314 @@ function CooperativeInfoPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ==================== PANNEAUX ADMIN : MARKETPLACE / FORMATION / MATÉRIEL ====================
+
+function MarketplaceAdminPanel({ nameByUid, onClose }: { nameByUid: Map<string, string>; onClose: () => void }) {
+  useBackGuard(true, onClose);
+  const { user } = useAuth();
+  const [listings, setListings] = useState<MarketplaceListing[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<MarketplaceOrder[]>([]);
+  const [orderingListingId, setOrderingListingId] = useState<string | null>(null);
+  const [buyerLabel, setBuyerLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const u1 = subscribeToActiveListings(setListings);
+    const u2 = subscribeToPendingOrders(setPendingOrders);
+    return () => { u1(); u2(); };
+  }, []);
+
+  const handleCreateOrder = async (listing: MarketplaceListing) => {
+    if (!buyerLabel.trim()) return;
+    setBusy(true);
+    try {
+      await createOrder(listing, buyerLabel);
+      setOrderingListingId(null); setBuyerLabel("");
+    } catch (err) {
+      console.error("Erreur enregistrement commande :", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleMarkPaid = async (orderId: string) => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      await markOrderPaid(orderId, user.id);
+    } catch (err) {
+      console.error("Erreur validation paiement :", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCancelOrder = async (orderId: string) => {
+    setBusy(true);
+    try {
+      await cancelOrder(orderId);
+    } catch (err) {
+      console.error("Erreur annulation commande :", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
+          <div className="font-black text-stone-800 flex items-center gap-2"><Package className="w-5 h-5 text-violet-600" /> Marketplace</div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-4 space-y-5">
+          <div>
+            <div className="font-bold text-stone-800 text-sm mb-2">Commandes en attente de paiement ({pendingOrders.length})</div>
+            {pendingOrders.length === 0 && <div className="text-xs text-stone-400 py-2">Aucune commande en attente.</div>}
+            {pendingOrders.map((o) => (
+              <div key={o.id} className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-bold text-stone-800 text-sm truncate">{nameByUid.get(o.farmerId) ?? o.farmerId} → {o.buyerLabel}</div>
+                  <div className="text-xs text-stone-500">{o.quantityKg.toLocaleString("fr-FR")} kg · {o.totalAmountFcfa.toLocaleString("fr-FR")} F</div>
+                </div>
+                <div className="shrink-0 flex gap-1.5">
+                  <button onClick={() => handleMarkPaid(o.id)} disabled={busy}
+                    className="bg-emerald-600 text-white text-xs font-bold px-3 py-2 rounded-lg disabled:opacity-50">Marquer payée</button>
+                  <button onClick={() => handleCancelOrder(o.id)} disabled={busy}
+                    className="bg-rose-50 text-rose-600 text-xs font-bold px-2.5 py-2 rounded-lg disabled:opacity-50">Annuler</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div className="font-bold text-stone-800 text-sm mb-2">Annonces actives ({listings.length})</div>
+            {listings.length === 0 && <div className="text-xs text-stone-400 py-2">Aucune annonce active.</div>}
+            {listings.map((l) => (
+              <div key={l.id} className="bg-stone-50 border border-stone-200 rounded-xl p-3 mb-2">
+                <div className="font-bold text-stone-800 text-sm">{nameByUid.get(l.farmerId) ?? l.farmerId}</div>
+                <div className="text-xs text-stone-500 mb-2">{l.crop} · {l.quantityKg.toLocaleString("fr-FR")} kg · {l.pricePerKgFcfa.toLocaleString("fr-FR")} F/kg</div>
+                {orderingListingId === l.id ? (
+                  <div className="flex gap-2">
+                    <input value={buyerLabel} onChange={(e) => setBuyerLabel(e.target.value)} placeholder="Nom de l'acheteur"
+                      className="flex-1 px-2.5 py-2 bg-white border border-stone-200 rounded-lg text-xs" />
+                    <button onClick={() => handleCreateOrder(l)} disabled={busy || !buyerLabel.trim()}
+                      className="bg-violet-600 text-white text-xs font-bold px-3 py-2 rounded-lg disabled:opacity-50">OK</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setOrderingListingId(l.id)} className="text-xs font-bold text-violet-600">Enregistrer une commande</button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FormationAdminPanel({ onClose }: { onClose: () => void }) {
+  useBackGuard(true, onClose);
+  const { user } = useAuth();
+  const [modules, setModules] = useState<TrainingModule[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("");
+  const [summary, setSummary] = useState("");
+  const [content, setContent] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState(10);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { const u = subscribeToModules(setModules); return () => u(); }, []);
+
+  const handleCreate = async () => {
+    if (!user || !title.trim() || !category.trim()) return;
+    setSaving(true);
+    try {
+      await createModule(user.id, { title, category, summary, content, durationMinutes });
+      setShowForm(false); setTitle(""); setCategory(""); setSummary(""); setContent(""); setDurationMinutes(10);
+    } catch (err) {
+      console.error("Erreur création module :", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
+          <div className="font-black text-stone-800 flex items-center gap-2"><GraduationCap className="w-5 h-5 text-violet-600" /> Formation</div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-4 space-y-4">
+          {!showForm ? (
+            <button onClick={() => setShowForm(true)} className="w-full py-3 rounded-xl font-bold text-violet-700 bg-violet-50 flex items-center justify-center gap-2">
+              <Plus className="w-4 h-4" /> Nouveau module
+            </button>
+          ) : (
+            <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 space-y-2">
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titre"
+                className="w-full px-3 py-2.5 bg-white border border-stone-200 rounded-lg text-sm" />
+              <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Catégorie (ex. Bonnes pratiques)"
+                className="w-full px-3 py-2.5 bg-white border border-stone-200 rounded-lg text-sm" />
+              <input value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Résumé court"
+                className="w-full px-3 py-2.5 bg-white border border-stone-200 rounded-lg text-sm" />
+              <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Contenu complet" rows={4}
+                className="w-full px-3 py-2.5 bg-white border border-stone-200 rounded-lg text-sm" />
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Durée (minutes)</label>
+                <input type="number" min={1} value={durationMinutes} onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                  className="w-full px-3 py-2.5 bg-white border border-stone-200 rounded-lg text-sm" />
+              </div>
+              <button onClick={handleCreate} disabled={saving || !title.trim() || !category.trim()}
+                className="w-full py-2.5 rounded-lg font-bold text-white bg-violet-600 disabled:opacity-50">
+                {saving ? "Enregistrement…" : "Publier le module"}
+              </button>
+            </div>
+          )}
+          <div className="space-y-2">
+            {modules.map((m) => (
+              <div key={m.id} className="bg-white border border-stone-200 rounded-xl p-3 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-bold text-stone-800 text-sm truncate">{m.title}</div>
+                  <div className="text-xs text-stone-500">{m.category} · {m.durationMinutes} min</div>
+                </div>
+                <button onClick={() => deleteModule(m.id)} className="shrink-0 p-2 text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EquipmentAdminPanel({ nameByUid, onClose }: { nameByUid: Map<string, string>; onClose: () => void }) {
+  useBackGuard(true, onClose);
+  const { user } = useAuth();
+  const [catalog, setCatalog] = useState<EquipmentCatalogItem[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<EquipmentRequest[]>([]);
+  const [ceilingByFarmer, setCeilingByFarmer] = useState<Record<string, number>>({});
+  const [showItemForm, setShowItemForm] = useState(false);
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("");
+  const [estimatedPriceFcfa, setEstimatedPriceFcfa] = useState(0);
+  const [itemDescription, setItemDescription] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const u1 = subscribeToEquipmentCatalog(setCatalog);
+    const u2 = subscribeToPendingEquipmentRequests(setPendingRequests);
+    return () => { u1(); u2(); };
+  }, []);
+
+  const pendingFarmerIds = pendingRequests.map((r) => r.farmerId).join(",");
+  useEffect(() => {
+    const ids = Array.from(new Set(pendingRequests.map((r) => r.farmerId))).filter((id) => !(id in ceilingByFarmer));
+    if (ids.length === 0) return;
+    Promise.all(ids.map((id) => estimateCreditCeiling(id).then((r) => [id, r.ceiling] as const).catch(() => [id, 0] as const)))
+      .then((entries) => setCeilingByFarmer((prev) => ({ ...prev, ...Object.fromEntries(entries) })));
+  }, [pendingFarmerIds]);
+
+  const handleCreateItem = async () => {
+    if (!name.trim() || !category.trim()) return;
+    setBusy(true);
+    try {
+      await createEquipmentItem({ name, category, estimatedPriceFcfa, description: itemDescription });
+      setShowItemForm(false); setName(""); setCategory(""); setEstimatedPriceFcfa(0); setItemDescription("");
+    } catch (err) {
+      console.error("Erreur ajout équipement :", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleApprove = async (requestId: string) => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      await approveEquipmentRequest(requestId, user.id);
+    } catch (err) {
+      console.error("Erreur approbation demande matériel :", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReject = async (requestId: string) => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      await rejectEquipmentRequest(requestId, user.id, "Demande refusée par la coopérative.");
+    } catch (err) {
+      console.error("Erreur refus demande matériel :", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
+          <div className="font-black text-stone-800 flex items-center gap-2"><Wrench className="w-5 h-5 text-violet-600" /> Financement matériel</div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-4 space-y-5">
+          <div>
+            <div className="font-bold text-stone-800 text-sm mb-2">Demandes en attente ({pendingRequests.length})</div>
+            {pendingRequests.length === 0 && <div className="text-xs text-stone-400 py-2">Aucune demande en attente.</div>}
+            {pendingRequests.map((r) => (
+              <div key={r.id} className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-2">
+                <div className="font-bold text-stone-800 text-sm">{nameByUid.get(r.farmerId) ?? r.farmerId} — {r.equipmentLabel}</div>
+                <div className="text-xs text-stone-500 mb-1">{r.amount.toLocaleString("fr-FR")} F · {r.termMonths} mois · {r.reason}</div>
+                {r.farmerId in ceilingByFarmer && (
+                  <div className="text-[11px] text-violet-600 mb-2">💡 Plafond estimé : {ceilingByFarmer[r.farmerId].toLocaleString("fr-FR")} F (indicatif, non bloquant)</div>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={() => handleApprove(r.id)} disabled={busy}
+                    className="flex-1 bg-emerald-600 text-white text-xs font-bold px-3 py-2 rounded-lg disabled:opacity-50">Approuver</button>
+                  <button onClick={() => handleReject(r.id)} disabled={busy}
+                    className="flex-1 bg-rose-50 text-rose-600 text-xs font-bold px-3 py-2 rounded-lg disabled:opacity-50">Rejeter</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-bold text-stone-800 text-sm">Catalogue ({catalog.length})</div>
+              <button onClick={() => setShowItemForm((v) => !v)} className="text-xs font-bold text-violet-600 flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Ajouter</button>
+            </div>
+            {showItemForm && (
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 space-y-2 mb-2">
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nom (ex. Motoculteur)"
+                  className="w-full px-3 py-2.5 bg-white border border-stone-200 rounded-lg text-sm" />
+                <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Catégorie (ex. Motorisation)"
+                  className="w-full px-3 py-2.5 bg-white border border-stone-200 rounded-lg text-sm" />
+                <input type="number" min={0} value={estimatedPriceFcfa || ""} onChange={(e) => setEstimatedPriceFcfa(Number(e.target.value))} placeholder="Prix indicatif (F)"
+                  className="w-full px-3 py-2.5 bg-white border border-stone-200 rounded-lg text-sm" />
+                <textarea value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} placeholder="Description" rows={2}
+                  className="w-full px-3 py-2.5 bg-white border border-stone-200 rounded-lg text-sm" />
+                <button onClick={handleCreateItem} disabled={busy || !name.trim() || !category.trim()}
+                  className="w-full py-2.5 rounded-lg font-bold text-white bg-violet-600 disabled:opacity-50">Ajouter au catalogue</button>
+              </div>
+            )}
+            {catalog.map((it) => (
+              <div key={it.id} className="bg-white border border-stone-200 rounded-xl p-3 flex items-center justify-between gap-2 mb-2">
+                <div className="min-w-0">
+                  <div className="font-bold text-stone-800 text-sm truncate">{it.name}</div>
+                  <div className="text-xs text-stone-500">{it.category} · {it.estimatedPriceFcfa.toLocaleString("fr-FR")} F</div>
+                </div>
+                <button onClick={() => deleteEquipmentItem(it.id)} className="shrink-0 p-2 text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ==================== CLIENT SPACE ====================
 
 function ClientSpace({ onLogout }: { onLogout: () => void }) {
@@ -2814,6 +3550,9 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
                         <div className="flex items-center gap-2 mt-1">
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${complet ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-700"}`}>{complet ? "Complet" : "En cours"}</span>
                           <span className="text-xs text-stone-400">{b.termMonths} mois</span>
+                          {b.purpose === "equipment" && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">⚙️ Matériel</span>
+                          )}
                         </div>
                       </div>
                       <div className="bg-lime-50 border border-lime-200 rounded-xl px-2.5 py-1.5 text-center">
@@ -2881,7 +3620,7 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
               {[
                 { label:"Email",        value: profile?.email || "—",      icon: Mail   },
                 { label:"Téléphone",    value: profile?.phone || "—",      icon: Phone  },
-                { label:"Coopérative",  value: profile?.cooperativeId || "—", icon: BadgeCheck },
+                { label:"Entreprise",   value: profile?.cooperativeId || "—", icon: BadgeCheck },
                 { label:"Région",       value: `${profile?.village ?? ""}, ${profile?.region ?? ""}`, icon: MapPin },
               ].map((r,i)=>{
                 const Icon = r.icon;
@@ -3417,6 +4156,8 @@ function Shell() {
       case "entrepots":   return <EntrepotsPage />;
       case "recyclage":   return <RecyclagePage />;
       case "carbon":      return <CarbonPage />;
+      case "formation":   return <FormationPage />;
+      case "equipment":   return <EquipmentPage />;
       case "identity":    return <IdentityPage onLogout={handleLogout} />;
       case "payments":    return <PaymentsPage />;
       default:            return <Dashboard onNavigate={navigate} />;

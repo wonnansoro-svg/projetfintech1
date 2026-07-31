@@ -29,6 +29,7 @@ service cloud.firestore {
     function isAdmin() { return isSignedIn() && myRole() == "admin"; }
     function isAgent() { return isSignedIn() && myRole() == "agent"; }
     function isInvestor() { return isSignedIn() && myRole() == "investor"; }
+    function isFarmer() { return isSignedIn() && myRole() == "farmer"; }
 
     match /profiles/{uid} {
       // Lecture individuelle élargie aux profils "farmer" pour tout utilisateur connecté :
@@ -169,6 +170,50 @@ service cloud.firestore {
     match /susuGroups/{id} {
       allow read: if isSignedIn();
       allow create, update, delete: if isAdmin() || isAgent();
+    }
+
+    match /marketplaceListings/{id} {
+      allow read: if isAdmin() || isAgent() || (isSignedIn() && resource.data.farmerId == request.auth.uid);
+      allow list: if isSignedIn(); // catalogue parcourable par tous, comme `credits`
+      allow create: if isFarmer() && request.resource.data.farmerId == request.auth.uid && request.resource.data.status == "active";
+      allow update: if isAdmin()
+        // le fermier ne peut qu'annuler sa propre annonce encore active
+        || (isFarmer() && resource.data.farmerId == request.auth.uid && resource.data.status == "active"
+            && request.resource.data.status in ["active", "cancelled"]);
+      allow delete: if false;
+    }
+
+    match /marketplaceOrders/{id} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.farmerId == request.auth.uid);
+      allow list: if isAdmin();
+      // Seul l'admin/coop enregistre et valide les commandes (acheteur externe à l'app).
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /trainingModules/{id} {
+      allow read, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /trainingProgress/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create, update: if isOwner(uid) && request.resource.data.uid == uid;
+    }
+
+    match /equipmentCatalog/{id} {
+      allow read, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /equipmentRequests/{id} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.farmerId == request.auth.uid);
+      allow list: if isAdmin();
+      allow create: if isFarmer() && request.resource.data.farmerId == request.auth.uid
+        && request.resource.data.status == "pending" && request.resource.data.linkedCreditId == null;
+      // Seul l'admin décide (approve/reject) — voir equipmentService.approveEquipmentRequest.
+      allow update: if isAdmin();
+      allow delete: if false;
     }
 
     match /notifications/{id} {
