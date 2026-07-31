@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { X, Phone, MapPin, Building2, ShieldCheck, Power, CheckCircle2, Loader } from "lucide-react";
+import { X, Phone, MapPin, Building2, ShieldCheck, Power, CheckCircle2, Loader, RefreshCw } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { subscribeToProfile, updateProfile } from "../services/profileService";
+import { subscribeToProfile, updateProfile, regeneratePhoneIndex } from "../services/profileService";
 import { subscribeToParcelsByOwner } from "../services/parcelService";
 import { subscribeToUserCredits } from "../services/creditService";
 import { subscribeToTransactionsByUser } from "../services/transactionService";
@@ -34,6 +34,8 @@ export default function MemberDetailPanel({ uid, onClose, variant = "admin", all
   const [amount, setAmount] = useState(1500);
   const [cashSaving, setCashSaving] = useState(false);
   const [cashDone, setCashDone] = useState(false);
+  const [fixingPhone, setFixingPhone] = useState(false);
+  const [phoneFixed, setPhoneFixed] = useState(false);
 
   useBackGuard(true, onClose);
 
@@ -45,6 +47,17 @@ export default function MemberDetailPanel({ uid, onClose, variant = "admin", all
   const applyPatch = async (patch: Partial<Profile>) => {
     setBusy(true);
     try { await updateProfile(uid, patch); } finally { setBusy(false); }
+  };
+
+  const fixPhoneLogin = async () => {
+    setFixingPhone(true);
+    try {
+      await regeneratePhoneIndex(uid);
+      setPhoneFixed(true);
+      setTimeout(() => setPhoneFixed(false), 2500);
+    } finally {
+      setFixingPhone(false);
+    }
   };
 
   const recordCash = async () => {
@@ -98,6 +111,16 @@ export default function MemberDetailPanel({ uid, onClose, variant = "admin", all
                 <div className="flex items-center gap-2 text-sm text-stone-700"><MapPin className="w-4 h-4 text-stone-400" /> {profile.village}, {profile.region}</div>
                 <div className="text-sm text-stone-700">🌾 {profile.crops.join(" · ") || "—"}</div>
               </div>
+
+              {variant === "admin" && (
+                <button onClick={fixPhoneLogin} disabled={fixingPhone}
+                  className={`w-full py-2.5 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-60 ${
+                    phoneFixed ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700"
+                  }`}>
+                  {fixingPhone ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  {phoneFixed ? "Accès par téléphone régénéré ✓" : "Réparer la connexion par téléphone"}
+                </button>
+              )}
 
               {(() => {
                 const kycLocked = busy || (variant === "supervisor" && !canEdit);

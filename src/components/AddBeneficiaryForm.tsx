@@ -32,7 +32,10 @@ export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["f
     setCrops((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
   };
 
-  const valid = fullName.trim().length > 1 && phone.trim().length >= 8 && village.trim() && region.trim() && cooperativeId.trim() && crops.length > 0;
+  // Les cultures ne concernent que les agriculteurs — un investisseur ou un
+  // superviseur n'en cultive pas, ça ne doit jamais bloquer la création de son compte.
+  const requiresCrops = role === "farmer";
+  const valid = fullName.trim().length > 1 && phone.trim().length >= 8 && village.trim() && region.trim() && cooperativeId.trim() && (!requiresCrops || crops.length > 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,19 +165,21 @@ export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["f
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-semibold text-stone-700 mb-1.5">Cultures</label>
-              <div className="grid grid-cols-3 gap-2">
-                {CROPS.map((c) => (
-                  <button key={c.key} type="button" onClick={() => toggleCrop(c.key)}
-                    className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                      crops.includes(c.key) ? "bg-green-600 text-white border-green-600" : "bg-stone-50 text-stone-600 border-stone-200"
-                    }`}>
-                    {c.emoji} {c.label}
-                  </button>
-                ))}
+            {requiresCrops && (
+              <div>
+                <label className="block text-sm font-semibold text-stone-700 mb-1.5">Cultures</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {CROPS.map((c) => (
+                    <button key={c.key} type="button" onClick={() => toggleCrop(c.key)}
+                      className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                        crops.includes(c.key) ? "bg-green-600 text-white border-green-600" : "bg-stone-50 text-stone-600 border-stone-200"
+                      }`}>
+                      {c.emoji} {c.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <button type="submit" disabled={!valid || saving}
               className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 transition-colors">

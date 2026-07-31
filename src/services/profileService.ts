@@ -78,6 +78,20 @@ async function writeProfileDocs(uid: string, input: NewProfileInput): Promise<Pr
   return profile;
 }
 
+/**
+ * Recalcule et réécrit l'entrée `phoneIndex` de ce profil à partir de son
+ * numéro actuellement enregistré — corrige les comptes créés avant
+ * l'amélioration de la normalisation du téléphone (voir `lib/phoneAuth.ts`),
+ * dont la connexion par téléphone pouvait échouer malgré un compte valide.
+ */
+export async function regeneratePhoneIndex(uid: string): Promise<void> {
+  const profile = await getProfile(uid);
+  if (!profile) throw new Error("Profil introuvable.");
+  const digits = normalizePhone(profile.phone);
+  if (!digits) throw new Error("Numéro de téléphone invalide sur ce profil.");
+  await setDoc(doc(db, PHONE_INDEX, digits), { email: profile.email });
+}
+
 /** Résout un identifiant de connexion (email ou téléphone) vers l'email Firebase Auth réel. */
 export async function resolveLoginEmail(identifier: string): Promise<string> {
   if (looksLikeEmail(identifier)) return identifier;

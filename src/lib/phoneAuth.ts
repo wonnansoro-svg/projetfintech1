@@ -1,13 +1,21 @@
 /**
- * Ne garde que les chiffres, et retire l'indicatif Côte d'Ivoire (+225/225) s'il
- * est présent — pour que "+225 07 00 00 00 00" et "07 00 00 00 00" (même numéro,
- * écrit différemment selon l'utilisateur ou l'écran) se normalisent à l'identique.
- * Un numéro local ivoirien fait 10 chiffres ; on ne retire "225" que s'il y a
- * plus de 10 chiffres, pour ne jamais tronquer un numéro purement local.
+ * Ne garde que les 9 derniers chiffres significatifs du numéro (le numéro
+ * d'abonné ivoirien, sans indicatif +225 ni le "0" initial).
+ *
+ * Pourquoi les 9 derniers plutôt que de repérer/retirer "+225" : selon que le
+ * "0" initial est conservé ou non à l'international (les usages varient selon
+ * qui saisit le numéro — un admin qui tape "+225 07 00 00 00 00" en gardant le
+ * 0, quelqu'un d'autre qui tape "+225 7 00 00 00 00" en le laissant tomber, un
+ * bénéficiaire qui se reconnecte en local "07 00 00 00 00"), une détection
+ * fixe du préfixe "225" produisait des clés différentes pour le même numéro
+ * selon la façon dont il avait été écrit — empêchant la connexion par
+ * téléphone pour des comptes pourtant correctement créés. Les 9 derniers
+ * chiffres, eux, désignent toujours le même abonné quelle que soit l'écriture
+ * (locale, +225 avec ou sans le 0 initial).
  */
 export function normalizePhone(input: string): string {
   const digits = input.replace(/\D/g, "");
-  return digits.length > 10 && digits.startsWith("225") ? digits.slice(3) : digits;
+  return digits.length > 9 ? digits.slice(-9) : digits;
 }
 
 export function looksLikeEmail(input: string): boolean {
