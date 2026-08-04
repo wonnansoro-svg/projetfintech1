@@ -6,6 +6,7 @@ import { subscribeToParcelsByOwner } from "../services/parcelService";
 import { subscribeToUserCredits } from "../services/creditService";
 import { subscribeToTransactionsByUser } from "../services/transactionService";
 import { recordContribution } from "../services/contributionService";
+import { creditInstitutionalFund } from "../services/investorService";
 import { useBackGuard } from "../lib/backGuard";
 import { hasPermission, SUPERVISOR_PERMISSION_GROUPS } from "../lib/permissions";
 import type { Profile, Parcel, Credit, Transaction, Role, KycStatus } from "../types/firestore";
@@ -36,6 +37,9 @@ export default function MemberDetailPanel({ uid, onClose, variant = "admin", all
   const [cashDone, setCashDone] = useState(false);
   const [fixingPhone, setFixingPhone] = useState(false);
   const [phoneFixed, setPhoneFixed] = useState(false);
+  const [fundAmount, setFundAmount] = useState(100000);
+  const [fundSaving, setFundSaving] = useState(false);
+  const [fundDone, setFundDone] = useState(false);
 
   useBackGuard(true, onClose);
 
@@ -69,6 +73,18 @@ export default function MemberDetailPanel({ uid, onClose, variant = "admin", all
       setTimeout(() => setCashDone(false), 2000);
     } finally {
       setCashSaving(false);
+    }
+  };
+
+  const recordInstitutionalFund = async () => {
+    if (fundAmount <= 0) return;
+    setFundSaving(true);
+    try {
+      await creditInstitutionalFund(uid, fundAmount);
+      setFundDone(true);
+      setTimeout(() => setFundDone(false), 2000);
+    } finally {
+      setFundSaving(false);
     }
   };
 
@@ -153,6 +169,22 @@ export default function MemberDetailPanel({ uid, onClose, variant = "admin", all
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {variant === "admin" && profile.role === "investor" && profile.investorProfile === "institutional" && (
+                <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-3">
+                  <div className="text-xs font-black text-stone-500 uppercase">Réception d'un virement — fonds vert</div>
+                  <div className="flex items-center justify-center gap-3">
+                    <button onClick={() => setFundAmount((a) => Math.max(0, a - 50000))} className="w-10 h-10 rounded-xl bg-stone-100 font-black">−</button>
+                    <div className="font-black text-lg text-stone-800">{fundAmount.toLocaleString("fr-FR")} F</div>
+                    <button onClick={() => setFundAmount((a) => a + 50000)} className="w-10 h-10 rounded-xl bg-stone-100 font-black">+</button>
+                  </div>
+                  <button onClick={recordInstitutionalFund} disabled={fundSaving || fundAmount <= 0}
+                    className={`w-full py-3 rounded-2xl font-black text-white flex items-center justify-center gap-2 disabled:opacity-60 ${fundDone ? "bg-emerald-500" : "bg-gradient-to-br from-sky-600 to-blue-700"}`}>
+                    {fundSaving ? <Loader className="w-4 h-4 animate-spin" /> : fundDone ? <CheckCircle2 className="w-4 h-4" /> : null}
+                    {fundDone ? "Fonds crédités !" : "Enregistrer réception du virement"}
+                  </button>
                 </div>
               )}
 

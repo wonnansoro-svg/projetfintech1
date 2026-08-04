@@ -5,7 +5,7 @@ import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { db, adminCreateAuth } from "../firebase";
 import { generateVerificationCode, generateTempPassword } from "../lib/qr";
 import { normalizePhone, looksLikeEmail, syntheticEmailForPhone } from "../lib/phoneAuth";
-import type { Crop, Profile, Role } from "../types/firestore";
+import type { Crop, InvestorProfileType, Profile, Role } from "../types/firestore";
 
 const PROFILES = "profiles";
 const WALLETS = "wallets";
@@ -20,6 +20,8 @@ export interface NewProfileInput {
   cooperativeId: string;
   crops: Crop[];
   role?: Role;
+  /** Uniquement si role === "investor". */
+  investorProfile?: InvestorProfileType | null;
   /** Superviseur responsable (renseigné automatiquement quand la création vient de l'espace superviseur). */
   supervisorId?: string | null;
 }
@@ -66,6 +68,7 @@ async function writeProfileDocs(uid: string, input: NewProfileInput): Promise<Pr
     active: true,
     supervisorId: input.supervisorId ?? null,
     permissions: null,
+    investorProfile: input.investorProfile ?? null,
     createdAt: now,
     updatedAt: now,
   };

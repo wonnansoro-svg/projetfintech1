@@ -8,6 +8,7 @@ import {
   Package, BadgeCheck, ChevronRight, Star, TrendingUp, Banknote,
   LogOut, Settings, Bell, PieChart, Activity, X, UserPlus,
   UsersRound, Plus, Pencil, Trash2, GraduationCap, Wrench, ShoppingCart, BookOpen, Volume2,
+  Award, Handshake, Landmark, Gift,
 } from "lucide-react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -53,6 +54,18 @@ import { estimateCreditCeiling } from "./services/creditService";
 import { speak } from "./lib/speech";
 import BigConfirmation from "./components/BigConfirmation";
 import IconGridPicker from "./components/IconGridPicker";
+import {
+  submitInvestorRequest, subscribeToUserInvestorRequests, subscribeToPendingInvestorRequests,
+  approveInvestorRequest, rejectInvestorRequest, creditInstitutionalFund,
+} from "./services/investorService";
+import {
+  submitDonation, subscribeToUserDonations, subscribeToPendingDonations, confirmDonation, getDonationsTotalConfirmed,
+} from "./services/donationService";
+import type { InvestorProfileType, InvestorRequest, Donation } from "./types/firestore";
+
+/** GIE et Institutionnel attendent la validation juridique (Cabinet LAWSON HRR) avant collecte réelle de fonds
+ * — même démarche que pour Bokanmin. Ne PAS passer à true sans confirmation explicite de l'utilisateur. */
+const INVESTOR_PROFILE_LIVE: Record<InvestorProfileType, boolean> = { honor: true, gie: false, institutional: false };
 import type {
   MarketplaceListing, MarketplaceOrder, TrainingModule, TrainingProgress,
   EquipmentCatalogItem, EquipmentRequest,
@@ -348,6 +361,7 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
     // Ligne 8 — Accompagnement
     { emoji: "🎓", label: "Formation",        sub: "Coaching",   color: "sky",     page: "formation" },
     { emoji: "⚙️", label: "Matériel",         sub: "Financement flexible", color: "amber", page: "equipment" },
+    { emoji: "🤝", label: "Devenir Investisseur", sub: "3 profils", color: "indigo", page: "become-investor" },
   ];
 
   return (
@@ -1933,6 +1947,207 @@ function EquipmentPage() {
   );
 }
 
+// ==================== MODULE DEVENIR INVESTISSEUR ====================
+
+const INVESTOR_PROFILES: { key: InvestorProfileType; icon: typeof Award; label: string; tagline: string; color: string }[] = [
+  { key: "honor", icon: Award, label: "Membre d'Honneur", tagline: "Un don libre, sans retour financier — pour protéger, former, transformer.", color: "from-amber-500 to-yellow-600" },
+  { key: "gie", icon: Handshake, label: "Réseau CoopAvec GIE", tagline: "Souscrivez une part (dès 100 000 F), gagnez une commission décidée en Assemblée.", color: "from-violet-600 to-purple-700" },
+  { key: "institutional", icon: Landmark, label: "Partenaire Institutionnel", tagline: "Fonds vert ou ligne de crédit au service d'une agriculture durable.", color: "from-sky-600 to-blue-700" },
+];
+
+const GIE_SHARE_OPTIONS = [100000, 200000, 300000, 500000];
+const REQUEST_STATUS_LABEL: Record<string, string> = { pending: "En attente de validation", approved: "Approuvée", rejected: "Non retenue" };
+
+function BecomeInvestorPage() {
+  const { user, profile } = useAuth();
+  const { pushToast } = useApp();
+  const [requests, setRequests] = useState<InvestorRequest[]>([]);
+  const [selected, setSelected] = useState<InvestorProfileType | null>(null);
+  const [phone, setPhone] = useState(profile?.phone ?? "");
+  const [email, setEmail] = useState(profile?.email ?? "");
+  const [gieShareAmount, setGieShareAmount] = useState(100000);
+  const [institutionName, setInstitutionName] = useState("");
+  const [institutionRepresentative, setInstitutionRepresentative] = useState("");
+  const [fundAmount, setFundAmount] = useState(0);
+  const [interestRatePct, setInterestRatePct] = useState(0);
+  const [termMonths, setTermMonths] = useState(12);
+  const [rules, setRules] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    const u = subscribeToUserInvestorRequests(user.id, setRequests);
+    return () => u();
+  }, [user?.id]);
+
+  const pending = requests.find((r) => r.status === "pending");
+  const lastRejected = requests.find((r) => r.status === "rejected");
+
+  const validByType: Record<InvestorProfileType, boolean> = {
+    honor: phone.trim().length > 0 && email.trim().length > 0,
+    gie: phone.trim().length > 0 && email.trim().length > 0 && gieShareAmount > 0,
+    institutional: phone.trim().length > 0 && email.trim().length > 0 && institutionName.trim().length > 0
+      && institutionRepresentative.trim().length > 0 && fundAmount > 0 && termMonths > 0,
+  };
+
+  const handleSubmit = async () => {
+    if (!user || !selected || !validByType[selected]) return;
+    setSaving(true);
+    try {
+      await submitInvestorRequest(user.id, {
+        profileType: selected, phone: phone.trim(), email: email.trim(),
+        ...(selected === "gie" ? { gieShareAmount } : {}),
+        ...(selected === "institutional" ? { institutionName, institutionRepresentative, fundAmount, interestRatePct, termMonths, rules } : {}),
+      });
+      pushToast({ tone: "success", big: true, title: "Demande envoyée !", message: "L'administration va l'examiner." });
+      setSelected(null);
+    } catch (err) {
+      console.error("Erreur demande investisseur :", err);
+      pushToast({ tone: "warn", title: "Échec", message: "Réessayez." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="p-4 pb-24 max-w-xl mx-auto">
+      <div className="animate-fade-up relative bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 text-white rounded-3xl p-5 shadow-xl mb-4">
+        <div className="flex items-center gap-2 mb-2"><Handshake className="w-6 h-6" /><div className="font-black text-lg">Devenir Investisseur</div></div>
+        <p className="text-sm opacity-90">Choisissez le profil qui correspond à votre engagement envers la coopérative.</p>
+      </div>
+
+      {pending && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
+          <div className="font-bold text-amber-800 text-sm">Demande en cours — {INVESTOR_PROFILES.find((p) => p.key === pending.profileType)?.label}</div>
+          <div className="text-xs text-amber-700 mt-1">{REQUEST_STATUS_LABEL[pending.status]} · envoyée le {new Date(pending.createdAt).toLocaleDateString("fr-FR")}</div>
+        </div>
+      )}
+
+      {!pending && lastRejected && (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 mb-4">
+          <div className="font-bold text-rose-800 text-sm">Demande précédente non retenue</div>
+          {lastRejected.rejectionReason && <div className="text-xs text-rose-700 mt-1">{lastRejected.rejectionReason}</div>}
+          <div className="text-xs text-rose-600 mt-1">Vous pouvez soumettre une nouvelle demande ci-dessous.</div>
+        </div>
+      )}
+
+      {!pending && !selected && (
+        <div className="space-y-3">
+          {INVESTOR_PROFILES.map((p) => {
+            const Icon = p.icon;
+            const live = INVESTOR_PROFILE_LIVE[p.key];
+            return (
+              <button key={p.key} onClick={() => setSelected(p.key)}
+                className={`w-full text-left bg-gradient-to-br ${p.color} text-white rounded-2xl p-4 shadow-sm flex items-start gap-3`}>
+                <div className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                  <Icon className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="font-black flex items-center gap-2">{p.label} {!live && <Lock className="w-3.5 h-3.5 opacity-80" />}</div>
+                  <div className="text-xs opacity-90 mt-0.5">{p.tagline}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {!pending && selected && !INVESTOR_PROFILE_LIVE[selected] && (
+        <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
+          <Lock className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+          <div className="font-bold text-stone-700 mb-1">Bientôt disponible</div>
+          <div className="text-sm text-stone-500">Ce profil est en attente de validation juridique par la coopérative avant toute collecte réelle de fonds.</div>
+          <button onClick={() => setSelected(null)} className="mt-4 text-sm font-bold text-violet-600">← Retour</button>
+        </div>
+      )}
+
+      {!pending && selected && INVESTOR_PROFILE_LIVE[selected] && (
+        <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm space-y-3">
+          <button onClick={() => setSelected(null)} className="text-xs font-bold text-stone-400">← Changer de profil</button>
+          <div className="font-black text-stone-800">{INVESTOR_PROFILES.find((p) => p.key === selected)?.label}</div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1">Téléphone</label>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)}
+                className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1">Email</label>
+              <input value={email} onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+            </div>
+          </div>
+
+          {selected === "gie" && (
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5">Part souscrite</label>
+              <div className="grid grid-cols-4 gap-2">
+                {GIE_SHARE_OPTIONS.map((amt) => (
+                  <button key={amt} type="button" onClick={() => setGieShareAmount(amt)}
+                    className={`py-2.5 rounded-xl text-xs font-bold ${gieShareAmount === amt ? "bg-violet-600 text-white" : "bg-stone-100 text-stone-600"}`}>
+                    {(amt / 1000).toLocaleString("fr-FR")}k
+                  </button>
+                ))}
+              </div>
+              <input type="number" min={100000} step={10000} value={gieShareAmount} onChange={(e) => setGieShareAmount(Number(e.target.value))}
+                className="w-full mt-2 px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" placeholder="Autre montant (F)" />
+            </div>
+          )}
+
+          {selected === "institutional" && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Nom de l'institution</label>
+                <input value={institutionName} onChange={(e) => setInstitutionName(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Représentant</label>
+                <input value={institutionRepresentative} onChange={(e) => setInstitutionRepresentative(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-stone-600 mb-1">Fonds (F)</label>
+                  <input type="number" min={0} value={fundAmount || ""} onChange={(e) => setFundAmount(Number(e.target.value))}
+                    className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-stone-600 mb-1">Taux (%)</label>
+                  <input type="number" min={0} step={0.1} value={interestRatePct || ""} onChange={(e) => setInterestRatePct(Number(e.target.value))}
+                    className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-stone-600 mb-1">Durée (mois)</label>
+                  <input type="number" min={1} value={termMonths} onChange={(e) => setTermMonths(Number(e.target.value))}
+                    className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1">Règles et modalités d'accompagnement</label>
+                <textarea value={rules} onChange={(e) => setRules(e.target.value)} rows={2}
+                  className="w-full px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm" />
+              </div>
+            </>
+          )}
+
+          {selected === "honor" && (
+            <div className="text-xs text-stone-500 bg-stone-50 rounded-xl p-3">
+              Aucun montant à indiquer maintenant — une fois votre statut activé, vous pourrez faire un don libre depuis votre espace investisseur.
+            </div>
+          )}
+
+          <button onClick={handleSubmit} disabled={saving || !validByType[selected]}
+            className="w-full py-3 rounded-xl font-black text-white bg-gradient-to-br from-indigo-600 to-violet-700 disabled:opacity-50">
+            {saving ? "Envoi…" : "Envoyer ma demande"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ==================== MODULE MÉTÉO du champs ====================
 
 function WeatherPage() {
@@ -2299,7 +2514,7 @@ type AllPages =
   | PageKey
   | "susu" | "credit" | "insurance" | "agriprotect" | "losses"
   | "certificate" | "coopavec" | "crowdfund" | "collecte"
-  | "entrepots" | "recyclage" | "carbon" | "marketplace" | "formation" | "equipment";
+  | "entrepots" | "recyclage" | "carbon" | "marketplace" | "formation" | "equipment" | "become-investor";
 
 const PAGE_TITLES: Record<string, string> = {
   home:        "COOPAVEC",
@@ -2322,6 +2537,7 @@ const PAGE_TITLES: Record<string, string> = {
   marketplace: "Marketplace Agricole",
   formation:   "Formation & Coaching",
   equipment:   "Financement Matériel",
+  "become-investor": "Devenir Investisseur",
 };
 
 /** Phrase courte lue à voix haute quand on appuie sur le bouton haut-parleur de chaque page (voir TopBar). */
@@ -2343,6 +2559,7 @@ const PAGE_VOICE_HINTS: Record<string, string> = {
   carbon:      "Vos crédits carbone. Vendez-les pour recevoir de l'argent.",
   formation:   "Des conseils et formations pour améliorer votre ferme.",
   equipment:   "Demandez un financement pour acheter du matériel agricole.",
+  "become-investor": "Choisissez un profil pour devenir investisseur de la coopérative.",
   identity:    "Votre identité agricole et vos réglages.",
   payments:    "Envoyez une cotisation par Wave.",
   marketplace: "Vendez votre récolte et suivez vos commandes.",
@@ -2375,6 +2592,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
   const [showMarketplacePanel, setShowMarketplacePanel] = useState(false);
   const [showFormationPanel, setShowFormationPanel] = useState(false);
   const [showEquipmentPanel, setShowEquipmentPanel] = useState(false);
+  const [showInvestorRequestsPanel, setShowInvestorRequestsPanel] = useState(false);
 
   const refreshProfiles = () => { listProfiles().then((p) => { setProfiles(p); setProfilesLoading(false); }); };
   useEffect(refreshProfiles, []);
@@ -2694,6 +2912,7 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
                 { icon: ShoppingCart, label: "Marketplace",    desc: "Annonces et commandes",   onClick: () => setShowMarketplacePanel(true) },
                 { icon: GraduationCap, label: "Formation",     desc: "Contenus pédagogiques",   onClick: () => setShowFormationPanel(true) },
                 { icon: Wrench,     label: "Financement matériel", desc: "Catalogue et demandes", onClick: () => setShowEquipmentPanel(true) },
+                { icon: Handshake,  label: "Demandes Investisseur", desc: "Membre d'Honneur, GIE, Institutionnel", onClick: () => setShowInvestorRequestsPanel(true) },
               ].map((it, i) => {
                 const Icon = it.icon;
                 return (
@@ -2757,6 +2976,9 @@ function AdminSpace({ onLogout }: { onLogout: () => void }) {
       )}
       {showEquipmentPanel && (
         <EquipmentAdminPanel nameByUid={nameByUid} onClose={() => setShowEquipmentPanel(false)} />
+      )}
+      {showInvestorRequestsPanel && (
+        <InvestorRequestsAdminPanel nameByUid={nameByUid} onClose={() => setShowInvestorRequestsPanel(false)} />
       )}
     </div>
   );
@@ -3413,11 +3635,120 @@ function EquipmentAdminPanel({ nameByUid, onClose }: { nameByUid: Map<string, st
   );
 }
 
+function InvestorRequestsAdminPanel({ nameByUid, onClose }: { nameByUid: Map<string, string>; onClose: () => void }) {
+  useBackGuard(true, onClose);
+  const { user } = useAuth();
+  const [requests, setRequests] = useState<InvestorRequest[]>([]);
+  const [donations, setDonations] = useState<Donation[]>([]);
+  const [donationsTotal, setDonationsTotal] = useState(0);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const u1 = subscribeToPendingInvestorRequests(setRequests);
+    const u2 = subscribeToPendingDonations(setDonations);
+    getDonationsTotalConfirmed().then(setDonationsTotal);
+    return () => { u1(); u2(); };
+  }, []);
+
+  const handleApprove = async (requestId: string) => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      await approveInvestorRequest(requestId, user.id);
+    } catch (err) {
+      console.error("Erreur approbation demande investisseur :", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReject = async (requestId: string) => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      await rejectInvestorRequest(requestId, user.id, "Demande non retenue par la coopérative.");
+    } catch (err) {
+      console.error("Erreur refus demande investisseur :", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleConfirmDonation = async (donationId: string) => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      await confirmDonation(donationId, user.id);
+    } catch (err) {
+      console.error("Erreur confirmation don :", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92dvh] overflow-y-auto">
+        <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
+          <div className="font-black text-stone-800 flex items-center gap-2"><Handshake className="w-5 h-5 text-violet-600" /> Demandes Investisseur</div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-4 space-y-5">
+          <div>
+            <div className="font-bold text-stone-800 text-sm mb-2">Demandes en attente ({requests.length})</div>
+            {requests.length === 0 && <div className="text-xs text-stone-400 py-2">Aucune demande en attente.</div>}
+            {requests.map((r) => (
+              <div key={r.id} className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-2">
+                <div className="font-bold text-stone-800 text-sm">{nameByUid.get(r.userId) ?? r.userId}</div>
+                <div className="text-xs text-stone-600 font-semibold">{INVESTOR_PROFILES.find((p) => p.key === r.profileType)?.label}</div>
+                <div className="text-xs text-stone-500 mt-1">{r.phone} · {r.email}</div>
+                {r.profileType === "gie" && <div className="text-xs text-stone-500">Part souscrite : {(r.gieShareAmount ?? 0).toLocaleString("fr-FR")} F</div>}
+                {r.profileType === "institutional" && (
+                  <div className="text-xs text-stone-500">
+                    {r.institutionName} — {r.institutionRepresentative}<br />
+                    Fonds : {(r.fundAmount ?? 0).toLocaleString("fr-FR")} F · Taux : {r.interestRatePct ?? 0}% · Durée : {r.termMonths ?? 0} mois
+                  </div>
+                )}
+                {r.profileType !== "honor" && (
+                  <div className="text-[11px] text-amber-700 mt-1">⚠️ Un appel de vérification est recommandé avant validation.</div>
+                )}
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => handleApprove(r.id)} disabled={busy}
+                    className="flex-1 bg-emerald-600 text-white text-xs font-bold px-3 py-2 rounded-lg disabled:opacity-50">Approuver</button>
+                  <button onClick={() => handleReject(r.id)} disabled={busy}
+                    className="flex-1 bg-rose-50 text-rose-600 text-xs font-bold px-3 py-2 rounded-lg disabled:opacity-50">Rejeter</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-bold text-stone-800 text-sm">Dons Membre d'Honneur en attente ({donations.length})</div>
+              <div className="text-xs text-stone-500">Total confirmé : {donationsTotal.toLocaleString("fr-FR")} F</div>
+            </div>
+            {donations.length === 0 && <div className="text-xs text-stone-400 py-2">Aucun don en attente.</div>}
+            {donations.map((d) => (
+              <div key={d.id} className="bg-stone-50 border border-stone-200 rounded-xl p-3 mb-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-bold text-stone-800 text-sm truncate">{nameByUid.get(d.donorId) ?? d.donorId}</div>
+                  <div className="text-xs text-stone-500">{d.amount.toLocaleString("fr-FR")} F · {d.channel}</div>
+                </div>
+                <button onClick={() => handleConfirmDonation(d.id)} disabled={busy}
+                  className="shrink-0 bg-emerald-600 text-white text-xs font-bold px-3 py-2 rounded-lg disabled:opacity-50">Confirmer</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ==================== CLIENT SPACE ====================
 
 function ClientSpace({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<"apercu" | "projets" | "rapports" | "profil">("apercu");
-  const { online, transactions } = useApp();
+  const { online, transactions, pushToast } = useApp();
   const { profile } = useAuth();
   const [balance, setBalance] = useState(0);
   const [bonds, setBonds] = useState<Credit[]>([]);
@@ -3425,12 +3756,54 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
   const [myInvestments, setMyInvestments] = useState<BondInvestment[]>([]);
   const [investmentCredits, setInvestmentCredits] = useState<Record<string, Credit>>({});
   const [investingBond, setInvestingBond] = useState<Credit | null>(null);
+  const [donations, setDonations] = useState<Donation[]>([]);
+  const [gieContributions, setGieContributions] = useState<Contribution[]>([]);
+  const [donateAmount, setDonateAmount] = useState(0);
+  const [contributeAmount, setContributeAmount] = useState(0);
 
   useEffect(() => {
     if (!profile?.uid) return;
     const u = subscribeToWallet(profile.uid, (w) => setBalance(w?.balance ?? 0));
     return () => u();
   }, [profile?.uid]);
+
+  useEffect(() => {
+    if (!profile?.uid || profile.investorProfile !== "honor") return;
+    const u = subscribeToUserDonations(profile.uid, setDonations);
+    return () => u();
+  }, [profile?.uid, profile?.investorProfile]);
+
+  useEffect(() => {
+    if (!profile?.uid || profile.investorProfile !== "gie") return;
+    const u = subscribeToUserContributions(profile.uid, setGieContributions);
+    return () => u();
+  }, [profile?.uid, profile?.investorProfile]);
+
+  const gieShareProgress = gieContributions.filter((c) => c.status === "confirmed").reduce((sum, c) => sum + c.amount, 0);
+
+  const handleDonate = async () => {
+    if (!profile?.uid || donateAmount <= 0) return;
+    try {
+      await submitDonation(profile.uid, donateAmount, "plateforme", "");
+      pushToast({ tone: "success", title: "Don envoyé !", message: "En attente de confirmation par l'administration." });
+      setDonateAmount(0);
+    } catch (err) {
+      console.error("Erreur envoi don :", err);
+      pushToast({ tone: "warn", title: "Échec", message: "Réessayez." });
+    }
+  };
+
+  const handleContributeGie = async () => {
+    if (!profile?.uid || contributeAmount <= 0) return;
+    try {
+      await submitContributionRequest(profile.uid, contributeAmount, "guarantee_fund");
+      pushToast({ tone: "success", title: "Cotisation envoyée !", message: "En attente de validation par l'admin (sous 24h)." });
+      setContributeAmount(0);
+    } catch (err) {
+      console.error("Erreur cotisation GIE :", err);
+      pushToast({ tone: "warn", title: "Échec", message: "Réessayez." });
+    }
+  };
 
   useEffect(() => { const u = subscribeToInvestableBonds(setBonds); return () => u(); }, []);
 
@@ -3530,6 +3903,62 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
                 <div className="text-xs text-stone-500">Investisseur · {profile?.region}</div>
               </div>
             </div>
+
+            {/* Profil investisseur (Membre d'Honneur / GIE / Institutionnel) */}
+            {profile?.investorProfile && (() => {
+              const meta = INVESTOR_PROFILES.find((p) => p.key === profile.investorProfile);
+              if (!meta) return null;
+              const Icon = meta.icon;
+              return (
+                <div className={`bg-gradient-to-br ${meta.color} rounded-2xl p-4 text-white shadow-sm`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Icon className="w-5 h-5" />
+                    <div className="font-black text-sm">{meta.label}</div>
+                  </div>
+
+                  {profile.investorProfile === "honor" && (
+                    <>
+                      <div className="text-xs opacity-90 mb-3">Total donné : {donations.filter((d) => d.status === "confirmed").reduce((s, d) => s + d.amount, 0).toLocaleString("fr-FR")} F</div>
+                      <div className="flex gap-2">
+                        <input type="number" min={0} value={donateAmount || ""} onChange={(e) => setDonateAmount(Number(e.target.value))}
+                          placeholder="Montant (F)" className="flex-1 px-3 py-2 rounded-xl text-sm text-stone-800" />
+                        <button onClick={handleDonate} disabled={donateAmount <= 0}
+                          className="bg-white text-amber-700 font-bold text-sm px-4 py-2 rounded-xl disabled:opacity-50 flex items-center gap-1.5">
+                          <Gift className="w-4 h-4" /> Faire un don
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {profile.investorProfile === "gie" && (
+                    <>
+                      <div className="flex justify-between text-xs opacity-90 mb-1">
+                        <span>{gieShareProgress.toLocaleString("fr-FR")} F cotisés</span>
+                        <span className="font-black">sur {(profile.gieShareAmount ?? 0).toLocaleString("fr-FR")} F</span>
+                      </div>
+                      <div className="h-2 bg-white/25 rounded-full overflow-hidden mb-3">
+                        <div className="h-full bg-white rounded-full" style={{ width: `${Math.min(100, Math.round((gieShareProgress / Math.max(1, profile.gieShareAmount ?? 1)) * 100))}%` }} />
+                      </div>
+                      <div className="flex gap-2">
+                        <input type="number" min={0} value={contributeAmount || ""} onChange={(e) => setContributeAmount(Number(e.target.value))}
+                          placeholder="Montant (F)" className="flex-1 px-3 py-2 rounded-xl text-sm text-stone-800" />
+                        <button onClick={handleContributeGie} disabled={contributeAmount <= 0}
+                          className="bg-white text-violet-700 font-bold text-sm px-4 py-2 rounded-xl disabled:opacity-50">Cotiser</button>
+                      </div>
+                    </>
+                  )}
+
+                  {profile.investorProfile === "institutional" && profile.institutionalConditions && (
+                    <div className="text-xs opacity-90 space-y-1">
+                      <div>Fonds proposé : {profile.institutionalConditions.fundAmount.toLocaleString("fr-FR")} F</div>
+                      <div>Taux : {profile.institutionalConditions.interestRatePct}% · Durée : {profile.institutionalConditions.termMonths} mois</div>
+                      {profile.institutionalConditions.rules && <div>Conditions : {profile.institutionalConditions.rules}</div>}
+                      <div className="opacity-75 mt-1">Le financement se fait par virement bancaire, crédité par la coopérative.</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Portfolio */}
             <div className="bg-gradient-to-br from-sky-500 via-sky-600 to-indigo-700 rounded-3xl p-5 text-white shadow-xl">
@@ -3680,7 +4109,7 @@ function ClientSpace({ onLogout }: { onLogout: () => void }) {
                 <Avatar name={profile?.fullName || "?"} size="xl" />
                 <div>
                   <div className="font-black text-stone-900 text-lg">{profile?.fullName}</div>
-                  <div className="text-sm text-stone-500">Investisseur · {profile?.region}</div>
+                  <div className="text-sm text-stone-500">{INVESTOR_PROFILES.find((p) => p.key === profile?.investorProfile)?.label ?? "Investisseur"} · {profile?.region}</div>
                   {profile?.kycStatus !== "pending" && (
                     <div className="mt-2 inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full px-3 py-1">
                       <BadgeCheck className="w-3.5 h-3.5" /> Compte vérifié
@@ -4229,6 +4658,7 @@ function Shell() {
       case "carbon":      return <CarbonPage />;
       case "formation":   return <FormationPage />;
       case "equipment":   return <EquipmentPage />;
+      case "become-investor": return <BecomeInvestorPage />;
       case "identity":    return <IdentityPage onLogout={handleLogout} />;
       case "payments":    return <PaymentsPage />;
       default:            return <Dashboard onNavigate={navigate} />;

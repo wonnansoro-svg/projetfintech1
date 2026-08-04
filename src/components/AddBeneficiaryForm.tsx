@@ -3,12 +3,18 @@ import { X, User, Phone, MapPin, Building2, Loader, CheckCircle2, AlertCircle, C
 import { createProfileAsAdmin, type AdminCreatedAccount } from "../services/profileService";
 import { CROPS } from "../lib/crops";
 import { useBackGuard } from "../lib/backGuard";
-import type { Crop, Role } from "../types/firestore";
+import type { Crop, InvestorProfileType, Role } from "../types/firestore";
 
 const ROLE_OPTIONS: { key: Role; label: string }[] = [
   { key: "farmer", label: "🌾 Agriculteur" },
   { key: "investor", label: "🏢 Investisseur" },
   { key: "agent", label: "🧑‍🌾 Superviseur" },
+];
+
+const INVESTOR_PROFILE_OPTIONS: { key: InvestorProfileType; label: string }[] = [
+  { key: "honor", label: "🎗️ Membre d'Honneur" },
+  { key: "gie", label: "🤝 Réseau GIE" },
+  { key: "institutional", label: "🏦 Institutionnel" },
 ];
 
 export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["farmer", "investor", "agent"], supervisorId = null }: {
@@ -21,6 +27,7 @@ export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["f
   const [cooperativeId, setCooperativeId] = useState("");
   const [crops, setCrops] = useState<Crop[]>([]);
   const [role, setRole] = useState<Role>(allowedRoles[0]);
+  const [investorProfile, setInvestorProfile] = useState<InvestorProfileType>("honor");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<AdminCreatedAccount | null>(null);
@@ -46,6 +53,7 @@ export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["f
       const account = await createProfileAsAdmin({
         fullName: fullName.trim(), phone: phone.trim(), village: village.trim(),
         region: region.trim(), cooperativeId: cooperativeId.trim(), crops, role, supervisorId,
+        investorProfile: role === "investor" ? investorProfile : null,
       });
       setCreated(account);
     } catch (err) {
@@ -157,6 +165,22 @@ export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["f
                     <button key={o.key} type="button" onClick={() => setRole(o.key)}
                       className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
                         role === o.key ? "bg-violet-600 text-white border-violet-600" : "bg-stone-50 text-stone-600 border-stone-200"
+                      }`}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {role === "investor" && (
+              <div>
+                <label className="block text-sm font-semibold text-stone-700 mb-1.5">Profil investisseur</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {INVESTOR_PROFILE_OPTIONS.map((o) => (
+                    <button key={o.key} type="button" onClick={() => setInvestorProfile(o.key)}
+                      className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                        investorProfile === o.key ? "bg-violet-600 text-white border-violet-600" : "bg-stone-50 text-stone-600 border-stone-200"
                       }`}>
                       {o.label}
                     </button>

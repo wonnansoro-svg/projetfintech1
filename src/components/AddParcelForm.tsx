@@ -88,7 +88,7 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92dvh] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800">🌾 Nouvelle parcelle</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500">
@@ -96,7 +96,7 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
           </button>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
           {error && (
             <div className="bg-red-50 text-red-600 p-3 rounded-xl flex items-center gap-2 text-sm">
               <AlertCircle className="w-4 h-4 shrink-0" /><p>{error}</p>

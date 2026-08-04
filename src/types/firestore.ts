@@ -31,6 +31,17 @@ export interface Profile {
   supervisorId: string | null;
   /** Uniquement significatif si role === "agent". */
   permissions: Partial<Record<SupervisorPermission, boolean>> | null;
+  /** Uniquement significatif si role === "investor" — voir services/investorService.ts. */
+  investorProfile?: InvestorProfileType | null;
+  /** GIE — part souscrite (cible), alimentée par les cotisations kind="guarantee_fund" existantes. */
+  gieShareAmount?: number | null;
+  /** Institutionnel — conditions négociées puis validées par l'admin. */
+  institutionalConditions?: {
+    fundAmount: number;
+    interestRatePct: number;
+    termMonths: number;
+    rules: string;
+  } | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -224,6 +235,50 @@ export interface AppNotification {
   title: string;
   message: string;
   read: boolean;
+  createdAt: number;
+}
+
+// ==================== PROFILS INVESTISSEURS (Financement Participatif) ====================
+
+export type InvestorProfileType = "honor" | "gie" | "institutional";
+export type InvestorRequestStatus = "pending" | "approved" | "rejected";
+
+/** Demande d'un fermier pour devenir investisseur (Membre d'Honneur / Réseau GIE / Partenaire Institutionnel). */
+export interface InvestorRequest {
+  id: string;
+  userId: string;
+  profileType: InvestorProfileType;
+  phone: string;
+  email: string;
+  /** Réseau GIE uniquement. */
+  gieShareAmount?: number;
+  /** Partenaire Institutionnel uniquement. */
+  institutionName?: string;
+  institutionRepresentative?: string;
+  fundAmount?: number;
+  interestRatePct?: number;
+  termMonths?: number;
+  rules?: string;
+  status: InvestorRequestStatus;
+  rejectionReason: string | null;
+  createdAt: number;
+  decidedAt: number | null;
+  decidedBy: string | null;
+}
+
+export type DonationChannel = "plateforme" | "virement" | "cheque";
+export type DonationStatus = "pending" | "confirmed" | "rejected";
+
+/** Don libre d'un Membre d'Honneur — sans retour financier, ne crédite jamais son propre solde. */
+export interface Donation {
+  id: string;
+  donorId: string;
+  amount: number;
+  channel: DonationChannel;
+  note: string;
+  status: DonationStatus;
+  confirmedAt: number | null;
+  confirmedBy: string | null;
   createdAt: number;
 }
 

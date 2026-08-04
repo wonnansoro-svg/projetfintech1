@@ -216,6 +216,26 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /investorRequests/{id} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow list: if isAdmin();
+      allow create: if isFarmer() && request.resource.data.userId == request.auth.uid && request.resource.data.status == "pending";
+      // Seul l'admin décide (approve/reject) — voir investorService.approveInvestorRequest.
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /donations/{id} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.donorId == request.auth.uid);
+      allow list: if isAdmin();
+      // Don via plateforme par le donateur lui-même (en attente) ; virement/chèque enregistrés
+      // directement par l'admin (paiement déjà reçu hors plateforme, confirmé d'emblée).
+      allow create: if (isSignedIn() && request.resource.data.donorId == request.auth.uid && request.resource.data.status == "pending")
+        || (isAdmin() && request.resource.data.status == "confirmed");
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
     match /notifications/{id} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow list: if isAdmin() || isSignedIn();
