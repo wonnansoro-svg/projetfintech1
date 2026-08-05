@@ -172,7 +172,7 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
 
         </div>
 
-        <div className="shrink-0 p-4 border-t border-stone-100" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+        <div className="shrink-0 p-4 border-t border-stone-100" style={{ paddingBottom: "max(1.75rem, calc(env(safe-area-inset-bottom) + 1rem))" }}>
           {!valid && !saving && (
             <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-center mb-3">
               {name.trim().length === 0
