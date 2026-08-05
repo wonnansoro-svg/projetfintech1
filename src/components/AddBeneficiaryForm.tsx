@@ -73,7 +73,7 @@ export default function AddBeneficiaryForm({ onClose, onDone, allowedRoles = ["f
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800">🆕 Ajouter un bénéficiaire</div>
           <button onClick={created ? onDone : onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500">

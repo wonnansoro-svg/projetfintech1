@@ -3028,7 +3028,7 @@ function GenerateBondModal({ adminId, farmers, onClose, onDone }: {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800">💳 Générer un bon de financement</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500">
@@ -3102,7 +3102,7 @@ function AdminNotificationsPanel({ pendingInvestmentsCount, pendingBondsCount, p
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800 flex items-center gap-2"><Bell className="w-5 h-5 text-violet-600" /> Notifications</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
@@ -3146,7 +3146,7 @@ function SecurityAccessPanel({ supervisors, onSelect, onClose }: {
   useBackGuard(true, onClose);
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800 flex items-center gap-2"><Shield className="w-5 h-5 text-violet-600" /> Sécurité & accès</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
@@ -3244,7 +3244,7 @@ function ReportsPanel({ profiles, nameByUid, fund, splitTotals, onClose }: {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800 flex items-center gap-2"><FileText className="w-5 h-5 text-violet-600" /> Rapports</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
@@ -3299,7 +3299,7 @@ function CooperativeInfoPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800 flex items-center gap-2"><Building2 className="w-5 h-5 text-violet-600" /> Coopérative</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
@@ -3382,7 +3382,7 @@ function MarketplaceAdminPanel({ nameByUid, onClose }: { nameByUid: Map<string, 
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800 flex items-center gap-2"><Package className="w-5 h-5 text-violet-600" /> Marketplace</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
@@ -3461,7 +3461,7 @@ function FormationAdminPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800 flex items-center gap-2"><GraduationCap className="w-5 h-5 text-violet-600" /> Formation</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
@@ -3575,7 +3575,7 @@ function EquipmentAdminPanel({ nameByUid, onClose }: { nameByUid: Map<string, st
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800 flex items-center gap-2"><Wrench className="w-5 h-5 text-violet-600" /> Financement matériel</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
@@ -3688,7 +3688,7 @@ function InvestorRequestsAdminPanel({ nameByUid, onClose }: { nameByUid: Map<str
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92dvh] overflow-y-auto">
+      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800 flex items-center gap-2"><Handshake className="w-5 h-5 text-violet-600" /> Demandes Investisseur</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
@@ -4185,7 +4185,7 @@ function InvestBondModal({ bond, investorId, balance, farmerName, onClose, onDon
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800">🌱 Investir — {farmerName}</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500">
@@ -4537,7 +4537,7 @@ function CreateGroupModal({ cooperativeId, beneficiaries, existingGroup, onClose
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800">{existingGroup ? "✏️ Modifier le groupe" : "🤝 Nouveau groupe Bokanmin"}</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500">
