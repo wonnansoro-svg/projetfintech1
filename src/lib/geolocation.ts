@@ -104,27 +104,43 @@ export function trackParcelBoundary(callback: (points: GeoPoint[]) => void, onEr
 }
 
 /**
- * Calcule la surface d'un polygone (coordonnées lat/lng)
- * Utilise la formule de Shoelace
+ * Calcule la surface d'un polygone GPS (coordonnées lat/lng en degrés).
+ *
+ * BUG CORRIGÉ : l'ancienne formule multipliait l'aire en degré² par
+ * (111/180)² ≈ 0,38 — une conversion sans fondement (confusion avec le
+ * facteur radians↔degrés π/180, qui sert à convertir un ANGLE, pas une
+ * distance). Le facteur correct est ~111,32 km PAR degré (pas divisé par
+ * 180), au carré : ~12 393. Résultat concret de l'ancien bug : un champ de
+ * 100m × 100m (1 hectare réel) ressortait à environ 0,00003 hectare — donc
+ * systématiquement arrondi à 0.00 ha, ce qui bloquait aussi silencieusement
+ * le bouton "Enregistrer" (qui exige hectares > 0).
+ *
+ * On projette chaque point en mètres locaux (plan tangent, précis pour la
+ * petite échelle d'une parcelle agricole) avant d'appliquer Shoelace, avec
+ * une correction cos(latitude) sur la longitude (un degré de longitude est
+ * plus court qu'un degré de latitude, sauf à l'équateur).
  */
 export function calculatePolygonArea(points: GeoPoint[]): number {
   if (points.length < 3) return 0;
 
-  let area = 0;
+  const KM_PER_DEGREE_LAT = 111.32;
+  const avgLat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
+  const kmPerDegreeLng = KM_PER_DEGREE_LAT * Math.cos((avgLat * Math.PI) / 180);
+
+  const toMeters = (p: GeoPoint) => ({
+    x: p.lng * kmPerDegreeLng * 1000,
+    y: p.lat * KM_PER_DEGREE_LAT * 1000,
+  });
+
+  let areaM2 = 0;
   for (let i = 0; i < points.length; i++) {
-    const p1 = points[i];
-    const p2 = points[(i + 1) % points.length];
-    area += (p1.lng * p2.lat - p2.lng * p1.lat);
+    const p1 = toMeters(points[i]);
+    const p2 = toMeters(points[(i + 1) % points.length]);
+    areaM2 += p1.x * p2.y - p2.x * p1.y;
   }
+  areaM2 = Math.abs(areaM2) / 2;
 
-  area = Math.abs(area) / 2;
-
-  // Conversion lat/lng à km² (approximation)
-  // À l'équateur : 1° ≈ 111 km
-  const latInKm = 111;
-
-  const areaKm2 = area * ((latInKm / 180) ** 2);
-  return areaKm2; // retourner en ha : * 100
+  return areaM2 / 1_000_000; // km² (appelant convertit ensuite en ha : * 100)
 }
 
 /**
