@@ -43,7 +43,10 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
     setTraceError("");
     setHectares(null);
     setTracing(true);
-    const stop = trackParcelBoundary((points) => setTracePoints([...points]));
+    const stop = trackParcelBoundary(
+      (points) => setTracePoints([...points]),
+      (message) => { setTraceError(message); setTracing(false); },
+    );
     setStopTracking(() => stop);
   };
 
@@ -164,6 +167,13 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
             )}
           </div>
 
+          {!valid && !saving && (
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-center">
+              {name.trim().length === 0
+                ? "Indiquez un nom de parcelle."
+                : "Tracez les limites du champ (bouton vert ci-dessus) pour activer l'enregistrement."}
+            </div>
+          )}
           <button onClick={handleSubmit} disabled={!valid || saving}
             className="w-full py-4 rounded-2xl font-black text-white bg-green-600 disabled:opacity-50 flex items-center justify-center gap-2">
             {saving ? <Loader className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}

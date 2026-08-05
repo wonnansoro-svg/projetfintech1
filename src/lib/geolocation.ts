@@ -63,26 +63,38 @@ export function getCurrentLocation(): Promise<GeoPoint> {
 }
 
 /**
- * Observe les mouvements GPS pour tracer une parcelle
- * Retourne une fonction d'arrêt
+ * Observe les mouvements GPS pour tracer une parcelle.
+ * `onError` est indispensable : sans lui, un refus de permission ou un
+ * contexte non sécurisé (site servi en http:// plutôt que https://, où
+ * l'API de géolocalisation est bloquée par le navigateur) laissait
+ * auparavant le traçage bloqué en silence, sans jamais accumuler de points
+ * — l'utilisateur restait bloqué avec le bouton "Enregistrer" grisé, sans
+ * comprendre pourquoi.
+ * Retourne une fonction d'arrêt.
  */
-export function trackParcelBoundary(callback: (points: GeoPoint[]) => void): () => void {
+export function trackParcelBoundary(callback: (points: GeoPoint[]) => void, onError?: (message: string) => void): () => void {
   const points: GeoPoint[] = [];
   let watchId: number | null = null;
 
-  if (navigator.geolocation) {
-    watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        points.push({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        });
-        callback(points);
-      },
-      (err) => console.error("Watch error:", err),
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-    );
+  if (!navigator.geolocation) {
+    onError?.("Géolocalisation non disponible sur cet appareil/navigateur (vérifiez que le site est bien ouvert en https://).");
+    return () => {};
   }
+
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      points.push({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+      });
+      callback(points);
+    },
+    (err) => {
+      console.error("Watch error:", err);
+      onError?.(describeGeoError(err));
+    },
+    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+  );
 
   return () => {
     if (watchId !== null) {
