@@ -289,12 +289,12 @@ function LoginPage() {
           )}
 
           <div>
-            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Email ou téléphone</label>
+            <label className="block text-sm font-semibold text-stone-700 mb-1.5">Numéro de téléphone ou Email</label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
               <input type="text" value={identifier} onChange={e => setIdentifier(e.target.value)}
                 className="w-full pl-9 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-sm"
-                placeholder="contact@exemple.com ou 07 00 00 00 00" required />
+                placeholder="07 00 00 00 00 ou contact@exemple.com" required />
             </div>
           </div>
           <div>
