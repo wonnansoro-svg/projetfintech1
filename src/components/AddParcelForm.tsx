@@ -90,11 +90,15 @@ export default function AddParcelForm({ ownerId, onClose, onDone }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
       {/* flex-col + bouton final hors de la zone défilante : quel que soit l'appareil (barre du
           navigateur, barre de gestes...), le bouton reste toujours visible en bas de la fenêtre,
-          jamais poussé hors écran par le contenu défilant au-dessus. */}
-      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[85dvh] flex flex-col overflow-hidden">
+          jamais poussé hors écran par le contenu défilant au-dessus.
+          max-h-[85%] (relatif au parent fixed inset-0, donc au viewport réel) plutôt que 85dvh :
+          l'unité dvh n'est pas supportée par tous les navigateurs/webviews mobiles, auquel cas le
+          plafond de hauteur est silencieusement ignoré et la carte grandit sans limite.
+          overflow-y-auto sur le fond assure un filet de sécurité supplémentaire. */}
+      <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[85%] flex flex-col overflow-hidden my-auto">
         <div className="shrink-0 bg-white flex items-center justify-between p-4 border-b border-stone-100">
           <div className="font-black text-stone-800">🌾 Nouvelle parcelle</div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500">

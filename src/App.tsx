@@ -88,6 +88,7 @@ import { describeAuthError } from "./lib/authErrors";
 import { subscribeToNotifications, markAllRead } from "./services/notificationService";
 import type { AppNotification, CooperativeInfo } from "./types/firestore";
 import AddBeneficiaryForm from "./components/AddBeneficiaryForm";
+import EditProfileModal from "./components/EditProfileModal";
 import MemberDetailPanel from "./components/MemberDetailPanel";
 import { listRecentTransactions } from "./services/transactionService";
 import { getAgriculturalAdvice } from "./lib/weather";
@@ -488,6 +489,7 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
   const idPhotoInputRef = useRef<HTMLInputElement>(null);
   const [idCardPreview, setIdCardPreview] = useState<PdfDocumentData | null>(null);
   const [showTour, setShowTour] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
 
   const handleIdPhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -526,10 +528,16 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
     <div className="p-4 pb-24 max-w-xl mx-auto">
       {/* Header Card */}
       <div className="animate-fade-up relative bg-gradient-to-br from-orange-500 via-amber-600 to-yellow-600 text-white rounded-3xl p-5 shadow-xl mb-4">
+        {profile && (
+          <button onClick={() => setShowEditProfile(true)} aria-label="Modifier mes informations"
+            className="absolute top-4 right-4 p-2 bg-white/15 hover:bg-white/25 border border-white/30 rounded-xl transition-colors active:scale-95">
+            <Pencil className="w-4 h-4" />
+          </button>
+        )}
         <div className="flex items-start gap-4 mb-4">
           <Avatar name={profile?.fullName || "?"} size="xl" />
           <div className="flex-1">
-            <div className="text-xl font-black">{profile?.fullName}</div>
+            <div className="text-xl font-black pr-9">{profile?.fullName}</div>
             <div className="text-xs opacity-90 flex items-center gap-1 mt-1"><Phone className="w-3 h-3" /> {profile?.phone}</div>
             <div className="mt-2 inline-flex items-center gap-1 bg-white/20 rounded-full px-3 py-1 text-xs font-bold">
               <BadgeCheck className="w-3.5 h-3.5" /> {kycLabel}
@@ -702,6 +710,9 @@ function IdentityPage({ onLogout }: { onLogout?: () => void }) {
           onValidated={() => setIdCardPreview(null)} />
       )}
       {showTour && <OnboardingTour onClose={() => setShowTour(false)} />}
+      {showEditProfile && profile && (
+        <EditProfileModal profile={profile} onClose={() => setShowEditProfile(false)} />
+      )}
     </div>
   );
 }
