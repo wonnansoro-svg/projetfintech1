@@ -57,15 +57,13 @@ import IconGridPicker from "./components/IconGridPicker";
 import {
   submitInvestorRequest, subscribeToUserInvestorRequests, subscribeToPendingInvestorRequests,
   approveInvestorRequest, rejectInvestorRequest, creditInstitutionalFund,
+  subscribeToInvestorProfileFlags, updateInvestorProfileFlags, DEFAULT_INVESTOR_PROFILE_FLAGS,
 } from "./services/investorService";
 import {
   submitDonation, subscribeToUserDonations, subscribeToPendingDonations, confirmDonation, getDonationsTotalConfirmed,
 } from "./services/donationService";
-import type { InvestorProfileType, InvestorRequest, Donation } from "./types/firestore";
+import type { InvestorProfileType, InvestorRequest, InvestorProfileFlags, Donation } from "./types/firestore";
 
-/** GIE et Institutionnel attendent la validation juridique (Cabinet LAWSON HRR) avant collecte réelle de fonds
- * — même démarche que pour Bokanmin. Ne PAS passer à true sans confirmation explicite de l'utilisateur. */
-const INVESTOR_PROFILE_LIVE: Record<InvestorProfileType, boolean> = { honor: true, gie: false, institutional: false };
 import type {
   MarketplaceListing, MarketplaceOrder, TrainingModule, TrainingProgress,
   EquipmentCatalogItem, EquipmentRequest,
@@ -1960,10 +1958,47 @@ function EquipmentPage() {
 
 // ==================== MODULE DEVENIR INVESTISSEUR ====================
 
-const INVESTOR_PROFILES: { key: InvestorProfileType; icon: typeof Award; label: string; tagline: string; color: string }[] = [
-  { key: "honor", icon: Award, label: "Membre d'Honneur", tagline: "Un don libre, sans retour financier — pour protéger, former, transformer.", color: "from-amber-500 to-yellow-600" },
-  { key: "gie", icon: Handshake, label: "Réseau CoopAvec GIE", tagline: "Souscrivez une part (dès 100 000 F), gagnez une commission décidée en Assemblée.", color: "from-violet-600 to-purple-700" },
-  { key: "institutional", icon: Landmark, label: "Partenaire Institutionnel", tagline: "Fonds vert ou ligne de crédit au service d'une agriculture durable.", color: "from-sky-600 to-blue-700" },
+const INVESTOR_PROFILES: {
+  key: InvestorProfileType; icon: typeof Award; label: string; tagline: string; color: string;
+  mission: string; how: string[];
+}[] = [
+  {
+    key: "honor", icon: Award, label: "Membre d'Honneur",
+    tagline: "Un don qui protège, qui forme, qui transforme.",
+    color: "from-amber-500 to-yellow-600",
+    mission: "Engagez-vous aux côtés des communautés rurales pour protéger nos ressources naturelles et bâtir un avenir plus vert. Votre contribution accompagne directement la formation des jeunes aux pratiques agricoles écologiques, la valorisation et la transformation des déchets agricoles en ressources utiles, et la création d'emplois durables au sein des territoires — sans attente de retour financier.",
+    how: [
+      "Don libre, à tout moment, quel que soit son montant",
+      "Aucun retour financier attendu — un élan collectif et solidaire",
+      "Statut honorifique de Membre d'Honneur de la communauté CoopAvec",
+    ],
+  },
+  {
+    key: "gie", icon: Handshake, label: "Réseau CoopAvec GIE",
+    tagline: "Investir ensemble, dans un même intérêt économique.",
+    color: "from-violet-600 to-purple-700",
+    mission: "Réseau de Financement Participatif du Groupement d'Intérêt Économique pour l'Entrepreneuriat Vert. En rejoignant ce réseau, vous devenez membre d'un même groupement d'intérêt économique, où chaque investissement vient renforcer le fonds commun destiné à faire grandir les activités génératrices de revenus, réduire les pertes de production et augmenter durablement les revenus des communautés accompagnées.",
+    how: [
+      "Souscription d'une part minimum de 100 000 F (possibilité de souscrire davantage : 200 000, 300 000, 500 000 F, etc.)",
+      "Règlement progressif sur la plateforme via des versements multiples de 1 500 F, jusqu'à atteindre le montant souscrit",
+      "Frais de gestion de 800 F prélevés automatiquement à chaque versement",
+      "Possibilité de paiement en espèces, enregistré manuellement",
+      "Souscription actée et officialisée en Assemblée Générale du groupement",
+      "Retour d'investissement sous forme de commission, déterminée et versée après l'Assemblée Générale",
+    ],
+  },
+  {
+    key: "institutional", icon: Landmark, label: "Partenaire Financier Institutionnel",
+    tagline: "Des fonds verts et des lignes de crédit au service d'une agriculture durable.",
+    color: "from-sky-600 to-blue-700",
+    mission: "Vous êtes une banque, une institution financière, un conseil régional ou une mairie ? Devenez Partenaire Institutionnel et accompagnez le développement d'une agriculture durable et responsable de l'environnement au sein des communautés rurales et péri-urbaines. À travers vos fonds verts ou vos lignes de crédit, vous donnez aux jeunes, aux femmes et aux producteurs agricoles les moyens de faire grandir leurs activités génératrices de revenus.",
+    how: [
+      "Vous définissez vos conditions : montant du fonds, taux, durée, règles d'accompagnement",
+      "Vous orientez vos recommandations et vos priorités d'impact selon les objectifs de votre institution",
+      "Vous soutenez des projets concrets et mesurables au sein des communautés que vous souhaitez accompagner",
+      "Le financement se fait par virement bancaire, crédité par la coopérative après validation",
+    ],
+  },
 ];
 
 const GIE_SHARE_OPTIONS = [100000, 200000, 300000, 500000];
@@ -1984,12 +2019,18 @@ function BecomeInvestorPage() {
   const [termMonths, setTermMonths] = useState(12);
   const [rules, setRules] = useState("");
   const [saving, setSaving] = useState(false);
+  const [flags, setFlags] = useState<InvestorProfileFlags>(DEFAULT_INVESTOR_PROFILE_FLAGS);
 
   useEffect(() => {
     if (!user) return;
     const u = subscribeToUserInvestorRequests(user.id, setRequests);
     return () => u();
   }, [user?.id]);
+
+  useEffect(() => {
+    const u = subscribeToInvestorProfileFlags(setFlags);
+    return () => u();
+  }, []);
 
   const pending = requests.find((r) => r.status === "pending");
   const lastRejected = requests.find((r) => r.status === "rejected");
@@ -2046,7 +2087,7 @@ function BecomeInvestorPage() {
         <div className="space-y-3">
           {INVESTOR_PROFILES.map((p) => {
             const Icon = p.icon;
-            const live = INVESTOR_PROFILE_LIVE[p.key];
+            const live = flags[p.key];
             return (
               <button key={p.key} onClick={() => setSelected(p.key)}
                 className={`w-full text-left bg-gradient-to-br ${p.color} text-white rounded-2xl p-4 shadow-sm flex items-start gap-3`}>
@@ -2063,19 +2104,35 @@ function BecomeInvestorPage() {
         </div>
       )}
 
-      {!pending && selected && !INVESTOR_PROFILE_LIVE[selected] && (
+      {!pending && selected && !flags[selected] && (
         <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-stone-300">
           <Lock className="w-8 h-8 text-stone-300 mx-auto mb-2" />
           <div className="font-bold text-stone-700 mb-1">Bientôt disponible</div>
-          <div className="text-sm text-stone-500">Ce profil est en attente de validation juridique par la coopérative avant toute collecte réelle de fonds.</div>
+          <div className="text-sm text-stone-500">Ce profil est en attente d'ouverture par la coopérative avant toute collecte réelle de fonds.</div>
           <button onClick={() => setSelected(null)} className="mt-4 text-sm font-bold text-violet-600">← Retour</button>
         </div>
       )}
 
-      {!pending && selected && INVESTOR_PROFILE_LIVE[selected] && (
+      {!pending && selected && flags[selected] && (() => {
+        const meta = INVESTOR_PROFILES.find((p) => p.key === selected)!;
+        return (
         <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-sm space-y-3">
           <button onClick={() => setSelected(null)} className="text-xs font-bold text-stone-400">← Changer de profil</button>
-          <div className="font-black text-stone-800">{INVESTOR_PROFILES.find((p) => p.key === selected)?.label}</div>
+          <div className="font-black text-stone-800">{meta.label}</div>
+
+          <div className="bg-stone-50 rounded-xl p-3 space-y-2.5">
+            <p className="text-xs text-stone-600 leading-relaxed">{meta.mission}</p>
+            <div>
+              <div className="text-[11px] font-bold text-stone-500 uppercase tracking-wide mb-1">Comment ça marche</div>
+              <ul className="space-y-1">
+                {meta.how.map((line, i) => (
+                  <li key={i} className="text-xs text-stone-600 flex gap-1.5">
+                    <span className="text-stone-400">•</span><span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -2154,7 +2211,8 @@ function BecomeInvestorPage() {
             {saving ? "Envoi…" : "Envoyer ma demande"}
           </button>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -3653,13 +3711,27 @@ function InvestorRequestsAdminPanel({ nameByUid, onClose }: { nameByUid: Map<str
   const [donations, setDonations] = useState<Donation[]>([]);
   const [donationsTotal, setDonationsTotal] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [flags, setFlags] = useState<InvestorProfileFlags>(DEFAULT_INVESTOR_PROFILE_FLAGS);
+  const [flagsBusy, setFlagsBusy] = useState(false);
 
   useEffect(() => {
     const u1 = subscribeToPendingInvestorRequests(setRequests);
     const u2 = subscribeToPendingDonations(setDonations);
+    const u3 = subscribeToInvestorProfileFlags(setFlags);
     getDonationsTotalConfirmed().then(setDonationsTotal);
-    return () => { u1(); u2(); };
+    return () => { u1(); u2(); u3(); };
   }, []);
+
+  const toggleProfileLive = async (key: InvestorProfileType) => {
+    setFlagsBusy(true);
+    try {
+      await updateInvestorProfileFlags({ ...flags, [key]: !flags[key] });
+    } catch (err) {
+      console.error("Erreur mise à jour des profils ouverts :", err);
+    } finally {
+      setFlagsBusy(false);
+    }
+  };
 
   const handleApprove = async (requestId: string) => {
     if (!user) return;
@@ -3705,6 +3777,21 @@ function InvestorRequestsAdminPanel({ nameByUid, onClose }: { nameByUid: Map<str
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-4 space-y-5">
+          <div>
+            <div className="font-bold text-stone-800 text-sm mb-2">Profils ouverts aux demandes</div>
+            <div className="space-y-1.5">
+              {INVESTOR_PROFILES.map((p) => (
+                <label key={p.key} className="flex items-center justify-between gap-2 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5">
+                  <span className="text-xs font-semibold text-stone-700">{p.label}</span>
+                  <button type="button" onClick={() => toggleProfileLive(p.key)} disabled={flagsBusy}
+                    className={`relative w-12 h-7 rounded-full transition-colors shrink-0 disabled:opacity-50 ${flags[p.key] ? "bg-emerald-500" : "bg-stone-300"}`}>
+                    <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${flags[p.key] ? "translate-x-5" : "translate-x-0.5"}`} />
+                  </button>
+                </label>
+              ))}
+            </div>
+            <div className="text-[11px] text-stone-400 mt-1.5">Un profil fermé affiche « Bientôt disponible » aux utilisateurs et ne peut faire l'objet d'aucune demande.</div>
+          </div>
           <div>
             <div className="font-bold text-stone-800 text-sm mb-2">Demandes en attente ({requests.length})</div>
             {requests.length === 0 && <div className="text-xs text-stone-400 py-2">Aucune demande en attente.</div>}

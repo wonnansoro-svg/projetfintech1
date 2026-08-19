@@ -2,13 +2,32 @@ import { collection, doc, getDoc, onSnapshot, orderBy, query, runTransaction, se
 import { db } from "../firebase";
 import { updateProfile } from "./profileService";
 import { buildNotification } from "./notificationService";
-import type { InvestorProfileType, InvestorRequest, Wallet } from "../types/firestore";
+import type { InvestorProfileFlags, InvestorProfileType, InvestorRequest, Wallet } from "../types/firestore";
 
 const REQUESTS = "investorRequests";
 const WALLETS = "wallets";
 const TRANSACTIONS = "transactions";
 const NOTIFICATIONS = "notifications";
 const ADMIN_BROADCAST = "admins";
+const PROFILE_FLAGS_DOC = doc(db, "settings", "investorProfiles");
+
+/** Membre d'Honneur seul actif tant que l'admin n'a pas ouvert GIE/Institutionnel (validation juridique en cours). */
+export const DEFAULT_INVESTOR_PROFILE_FLAGS: InvestorProfileFlags = { honor: true, gie: false, institutional: false, updatedAt: 0 };
+
+export async function getInvestorProfileFlags(): Promise<InvestorProfileFlags> {
+  const snap = await getDoc(PROFILE_FLAGS_DOC);
+  return snap.exists() ? (snap.data() as InvestorProfileFlags) : DEFAULT_INVESTOR_PROFILE_FLAGS;
+}
+
+export function subscribeToInvestorProfileFlags(onChange: (flags: InvestorProfileFlags) => void) {
+  return onSnapshot(PROFILE_FLAGS_DOC, (snap) => {
+    onChange(snap.exists() ? (snap.data() as InvestorProfileFlags) : DEFAULT_INVESTOR_PROFILE_FLAGS);
+  });
+}
+
+export async function updateInvestorProfileFlags(patch: Omit<InvestorProfileFlags, "updatedAt">): Promise<void> {
+  await setDoc(PROFILE_FLAGS_DOC, { ...patch, updatedAt: Date.now() });
+}
 
 export interface NewInvestorRequestInput {
   profileType: InvestorProfileType;
@@ -24,7 +43,7 @@ export interface NewInvestorRequestInput {
 }
 
 const PROFILE_LABEL: Record<InvestorProfileType, string> = {
-  honor: "Membre d'Honneur", gie: "Réseau CoopAvec GIE", institutional: "Partenaire Institutionnel",
+  honor: "Membre d'Honneur", gie: "Réseau CoopAvec GIE", institutional: "Partenaire Financier Institutionnel",
 };
 
 export async function submitInvestorRequest(userId: string, input: NewInvestorRequestInput): Promise<void> {

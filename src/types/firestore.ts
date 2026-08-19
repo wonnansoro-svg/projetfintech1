@@ -266,6 +266,14 @@ export interface InvestorRequest {
   decidedBy: string | null;
 }
 
+/** Document unique `settings/investorProfiles` — quels profils investisseur l'admin a ouverts aux demandes. */
+export interface InvestorProfileFlags {
+  honor: boolean;
+  gie: boolean;
+  institutional: boolean;
+  updatedAt: number;
+}
+
 export type DonationChannel = "plateforme" | "virement" | "cheque";
 export type DonationStatus = "pending" | "confirmed" | "rejected";
 
