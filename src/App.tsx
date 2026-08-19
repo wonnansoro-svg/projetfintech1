@@ -441,7 +441,7 @@ function Dashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
         ))}
       </div>
 
-      {/* Section: Protection */}
+      {/* Section: Protection DES Agriculteur */}
       <p className="text-[11px] font-black text-stone-400 uppercase tracking-widest mb-2">Protection & Sinistres</p>
       <div className="grid grid-cols-2 gap-2.5 mb-4">
         {modules.slice(4,8).map(m => (
