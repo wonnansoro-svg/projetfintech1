@@ -3729,9 +3729,10 @@ function InvestorRequestsAdminPanel({ nameByUid, onClose }: { nameByUid: Map<str
       await updateInvestorProfileFlags({ ...flags, [key]: !flags[key] });
     } catch (err) {
       console.error("Erreur mise à jour des profils ouverts :", err);
+      const code = (err as { code?: string })?.code ?? "inconnu";
       pushToast({
         tone: "warn", title: "Échec de l'activation",
-        message: "Écriture refusée par Firestore — vérifiez que les règles de sécurité (firestore.rules) ont bien été déployées (firebase deploy --only firestore:rules).",
+        message: `Code : ${code} — ${err instanceof Error ? err.message : String(err)}`,
       });
     } finally {
       setFlagsBusy(false);
