@@ -3707,6 +3707,7 @@ function EquipmentAdminPanel({ nameByUid, onClose }: { nameByUid: Map<string, st
 function InvestorRequestsAdminPanel({ nameByUid, onClose }: { nameByUid: Map<string, string>; onClose: () => void }) {
   useBackGuard(true, onClose);
   const { user } = useAuth();
+  const { pushToast } = useApp();
   const [requests, setRequests] = useState<InvestorRequest[]>([]);
   const [donations, setDonations] = useState<Donation[]>([]);
   const [donationsTotal, setDonationsTotal] = useState(0);
@@ -3728,6 +3729,10 @@ function InvestorRequestsAdminPanel({ nameByUid, onClose }: { nameByUid: Map<str
       await updateInvestorProfileFlags({ ...flags, [key]: !flags[key] });
     } catch (err) {
       console.error("Erreur mise à jour des profils ouverts :", err);
+      pushToast({
+        tone: "warn", title: "Échec de l'activation",
+        message: "Écriture refusée par Firestore — vérifiez que les règles de sécurité (firestore.rules) ont bien été déployées (firebase deploy --only firestore:rules).",
+      });
     } finally {
       setFlagsBusy(false);
     }
